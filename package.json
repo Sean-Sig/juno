@@ -1,0 +1,21 @@
+{
+  "name": "juno",
+  "private": true,
+  "workspaces": [
+    "apps/*",
+    "packages/*"
+  ],
+  "scripts": {
+    "golf": "turbo run start --filter=@juno/golf",
+    "tennis": "turbo run start --filter=@juno/tennis",
+    "build": "turbo run build",
+    "test": "turbo run test",
+    "lint": "turbo run lint",
+    "typecheck": "turbo run typecheck"
+  },
+  "packageManager": "npm@11.12.1",
+  "devDependencies": {
+    "turbo": "^2.0.0",
+    "typescript": "~6.0.3"
+  }
+}

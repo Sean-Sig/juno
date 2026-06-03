@@ -1,0 +1,34 @@
+node_modules/
+.expo/
+dist/
+build/
+web-build/
+.turbo/
+ios/
+android/
+
+# Logs
+*.log
+
+# Environment variables
+.env
+.env.*
+!.env.example
+
+# TypeScript
+*.tsbuildinfo
+
+# Tests
+coverage/
+
+# macOS
+.DS_Store
+
+# Android signing
+*.jks
+*.keystore
+
+# iOS signing
+*.p8
+*.p12
+*.mobileprovision

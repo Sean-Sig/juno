@@ -1,0 +1,80 @@
+import React, { createContext, useContext, useEffect, useState } from "react";
+import { auth } from "./api";
+import { saveSession, loadSession, clearSession } from "./storage";
+import { setUnauthorizedHandler } from "../client";
+import type { AuthSession } from "./types";
+
+type AuthContextValue = {
+  session: AuthSession | null;
+  isLoading: boolean;
+  login: (email: string, password: string, accountId: string) => Promise<AuthSession>;
+  register: (email: string, password: string, accountId: string) => Promise<AuthSession>;
+  logout: () => Promise<void>;
+};
+
+const AuthContext = createContext<AuthContextValue | null>(null);
+
+export function AuthProvider({
+  children,
+  sessionKey,
+}: {
+  children: React.ReactNode;
+  sessionKey: string;
+}) {
+  const [session, setSession] = useState<AuthSession | null>(null);
+  const [isLoading, setIsLoading] = useState(true);
+
+  useEffect(() => {
+    setUnauthorizedHandler(() => {
+      clearSession(sessionKey);
+      setSession(null);
+    });
+
+    loadSession(sessionKey).then(async (s) => {
+      if (!s) {
+        setIsLoading(false);
+        return;
+      }
+      try {
+        await auth.me(s.token);
+        setSession(s);
+      } catch {
+        await clearSession(sessionKey);
+        setSession(null);
+      } finally {
+        setIsLoading(false);
+      }
+    });
+  }, []);
+
+  async function login(email: string, password: string, accountId: string): Promise<AuthSession> {
+    const s = await auth.login(email, password, accountId);
+    await saveSession(s, sessionKey);
+    setSession(s);
+    return s;
+  }
+
+  async function register(email: string, password: string, accountId: string): Promise<AuthSession> {
+    const s = await auth.register(email, password, accountId);
+    await saveSession(s, sessionKey);
+    setSession(s);
+    return s;
+  }
+
+  async function logout(): Promise<void> {
+    await clearSession(sessionKey);
+    setSession(null);
+  }
+
+  return (
+    <AuthContext.Provider value={{ session, isLoading, login, register, logout }}>
+      {children}
+    </AuthContext.Provider>
+  );
+}
+
+export function useAuth(): AuthContextValue {
+  const ctx = useContext(AuthContext);
+  if (!ctx) throw new Error("useAuth must be used within AuthProvider");
+  return ctx;
+}
