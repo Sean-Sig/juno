@@ -54,7 +54,17 @@ export default function ScoresScreen() {
           <MatchRow
             match={item}
             playerMap={playerMap}
-            onPress={() => router.push(`/match/${item.id}`)}
+            onPress={() => {
+              const p1 = item.player1_id ? playerMap.get(item.player1_id) : undefined;
+              const p2 = item.player2_id ? playerMap.get(item.player2_id) : undefined;
+              router.push({
+                pathname: `/match/${item.id}`,
+                params: {
+                  p1Name: playerName(p1),
+                  p2Name: playerName(p2),
+                },
+              });
+            }}
           />
         )}
       />

@@ -9,15 +9,21 @@ import { tennis, TennisMatch, TennisPlayer, MatchComment, joinTennisMatchChannel
 import { LiveBadge, colors, spacing, typography, radius } from "@juno/ui";
 import { Channel } from "phoenix";
 
-function playerName(player: TennisPlayer | null): string {
-  if (!player) return "TBD";
-  const first = player.display_first_name ?? player.first_name;
-  const last = player.display_last_name ?? player.last_name;
-  return `${first} ${last}`;
+function playerName(player: TennisPlayer | null, fallback?: string): string {
+  if (player) {
+    const first = player.display_first_name ?? player.first_name;
+    const last = player.display_last_name ?? player.last_name;
+    return `${first} ${last}`;
+  }
+  return fallback ?? "TBD";
 }
 
 export default function MatchScreen() {
-  const { id } = useLocalSearchParams<{ id: string }>();
+  const { id, p1Name, p2Name } = useLocalSearchParams<{
+    id: string;
+    p1Name?: string;
+    p2Name?: string;
+  }>();
   const [match, setMatch] = useState<TennisMatch | null>(null);
   const [player1, setPlayer1] = useState<TennisPlayer | null>(null);
   const [player2, setPlayer2] = useState<TennisPlayer | null>(null);
@@ -43,7 +49,9 @@ export default function MatchScreen() {
           tennis.getPlayerFull(data.player2_id).then(({ data: p }) => setPlayer2(p))
         );
       }
-      Promise.all(fetches).catch(() => {});
+      Promise.all(fetches).catch((err) => {
+        if (__DEV__) console.warn("Player fetch failed:", err);
+      });
     });
 
     tennis.getMatchComments(id).then(({ data }) => setComments(data));
@@ -81,7 +89,7 @@ export default function MatchScreen() {
       <View style={styles.scoreboard}>
         <View style={styles.scoreRow}>
           <Text style={[styles.playerLabel, match.winner === 1 && styles.winner]}>
-            {playerName(player1)}
+            {playerName(player1, p1Name)}
           </Text>
           <View style={styles.sets}>
             {(match.sets ?? []).map((s, i) => (
@@ -92,7 +100,7 @@ export default function MatchScreen() {
         </View>
         <View style={styles.scoreRow}>
           <Text style={[styles.playerLabel, match.winner === 2 && styles.winner]}>
-            {playerName(player2)}
+            {playerName(player2, p2Name)}
           </Text>
           <View style={styles.sets}>
             {(match.sets ?? []).map((s, i) => (
