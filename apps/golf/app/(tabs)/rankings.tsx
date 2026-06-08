@@ -18,6 +18,8 @@ const RANKING_TYPES: RankingType[] = [
   { key: "rolex", label: "Rolex", sort: "rolex_world_rankings", rankOf: (p) => p.rolex_world_rankings_rank, rankLabel: "Rolex" },
 ];
 
+const PER_PAGE = 50;
+
 export default function RankingsScreen() {
   const { colors } = useTheme();
   const styles = useMemo(() => createStyles(colors), [colors]);
@@ -29,15 +31,35 @@ export default function RankingsScreen() {
   const [query, setQuery] = useState("");
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
+  const [loadingMore, setLoadingMore] = useState(false);
+  const [hasMore, setHasMore] = useState(true);
 
   const load = useCallback(() => {
-    return golf.getPlayers({ sort: rankingType.sort }).then(({ data }) => setPlayers(data));
+    setHasMore(true);
+    return golf.getPlayers({ sort: rankingType.sort, page: 1, per_page: PER_PAGE }).then(({ data }) => {
+      setPlayers(data);
+      setHasMore(data.length === PER_PAGE);
+    });
   }, [rankingType]);
 
   useEffect(() => {
     setLoading(true);
     load().finally(() => setLoading(false));
   }, [load]);
+
+  function loadMore() {
+    if (loadingMore || !hasMore || loading) return;
+    setLoadingMore(true);
+    const nextPage = Math.floor(players.length / PER_PAGE) + 1;
+
+    golf
+      .getPlayers({ sort: rankingType.sort, page: nextPage, per_page: PER_PAGE })
+      .then(({ data }) => {
+        setPlayers((prev) => [...prev, ...data]);
+        setHasMore(data.length === PER_PAGE);
+      })
+      .finally(() => setLoadingMore(false));
+  }
 
   useEffect(() => {
     if (!session) {
@@ -111,6 +133,9 @@ export default function RankingsScreen() {
           keyExtractor={(p) => p.id}
           contentContainerStyle={styles.list}
           refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor={colors.primary} />}
+          onEndReached={query.trim() ? undefined : loadMore}
+          onEndReachedThreshold={0.4}
+          ListFooterComponent={loadingMore ? <ActivityIndicator color={colors.primary} style={styles.footerSpinner} /> : null}
           renderItem={({ item }) => (
             <PlayerCard
               firstName={item.display_first_name ?? item.first_name}
@@ -161,6 +186,7 @@ function createStyles(colors: Palette) {
       color: colors.text,
     },
     list: { padding: spacing.md, paddingTop: 0 },
+    footerSpinner: { marginVertical: spacing.md },
     empty: { ...typography.body, color: colors.textSecondary, textAlign: "center", marginTop: spacing.lg },
   });
 }

@@ -1,10 +1,9 @@
-import { apiFetch } from "../client";
+import { apiFetch, buildQuery, type PageParams } from "../client";
 import type { GolfPlayer, GolfTournament, GolfScheduleEntry, PlayerSeasonRank } from "./types";
 
 export const golf = {
-  getPlayers(params?: { sort?: string; page?: number }) {
-    const qs = new URLSearchParams(params as Record<string, string>).toString();
-    return apiFetch<{ data: GolfPlayer[] }>(`/api/v4/golf/players${qs ? `?${qs}` : ""}`);
+  getPlayers(params?: { sort?: string } & PageParams) {
+    return apiFetch<{ data: GolfPlayer[] }>(`/api/v4/golf/players${buildQuery(params)}`);
   },
 
   getPlayer(id: string) {
@@ -15,17 +14,18 @@ export const golf = {
     return apiFetch<{ data: unknown[] }>(`/api/v4/golf/players/${id}/scores`);
   },
 
-  getPlayerSeasonRanks(id: string) {
-    return apiFetch<{ data: PlayerSeasonRank[] }>(`/api/v4/golf/players/${id}/season_ranks/standings`);
+  getPlayerSeasonRanks(id: string, params?: PageParams) {
+    return apiFetch<{ data: PlayerSeasonRank[] }>(
+      `/api/v4/golf/players/${id}/season_ranks/standings${buildQuery(params)}`
+    );
   },
 
-  getTournaments(teamId: string, params?: { hide_scores?: boolean }) {
-    const qs = params?.hide_scores ? "?hide_scores=true" : "";
-    return apiFetch<{ data: GolfTournament[] }>(`/api/v4/golf/tournaments/${teamId}${qs}`);
+  getTournaments(teamId: string, params?: { hide_scores?: boolean } & PageParams) {
+    return apiFetch<{ data: GolfTournament[] }>(`/api/v4/golf/tournaments/${teamId}${buildQuery(params)}`);
   },
 
-  getScheduleEntries() {
-    return apiFetch<{ data: GolfScheduleEntry[] }>("/api/v4/golf_schedule_entries");
+  getScheduleEntries(params?: PageParams) {
+    return apiFetch<{ data: GolfScheduleEntry[] }>(`/api/v4/golf_schedule_entries${buildQuery(params)}`);
   },
 
   getScheduleEntry(id: string) {

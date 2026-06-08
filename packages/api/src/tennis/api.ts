@@ -1,4 +1,4 @@
-import { apiFetch } from "../client";
+import { apiFetch, buildQuery, type PageParams } from "../client";
 import type {
   TennisPlayer,
   TennisMatch,
@@ -17,20 +17,24 @@ export const tennis = {
     return apiFetch<{ data: TennisMatch }>(`/api/v3/tennis/matches/${id}`);
   },
 
-  getTournaments(teamId: string) {
-    return apiFetch<{ data: TennisTournament[] }>(`/api/v3/tennis/tournaments/${teamId}`);
+  getTournaments(teamId: string, params?: PageParams) {
+    return apiFetch<{ data: TennisTournament[] }>(`/api/v3/tennis/tournaments/${teamId}${buildQuery(params)}`);
   },
 
-  getTournamentMatches(teamId: string) {
-    return apiFetch<{ data: TennisMatch[] }>(`/api/v3/tennis/tournaments/${teamId}/matches`);
+  getTournamentMatches(teamId: string, params?: PageParams) {
+    return apiFetch<{ data: TennisMatch[] }>(
+      `/api/v3/tennis/tournaments/${teamId}/matches${buildQuery(params)}`
+    );
   },
 
-  getTournamentPlayers(teamId: string) {
-    return apiFetch<{ data: TennisPlayer[] }>(`/api/v3/tennis/tournaments/${teamId}/players`);
+  getTournamentPlayers(teamId: string, params?: PageParams) {
+    return apiFetch<{ data: TennisPlayer[] }>(
+      `/api/v3/tennis/tournaments/${teamId}/players${buildQuery(params)}`
+    );
   },
 
-  getScheduleEntries() {
-    return apiFetch<{ data: TennisScheduleEntry[] }>("/api/v3/tennis/tennis_schedule_entries");
+  getScheduleEntries(params?: PageParams) {
+    return apiFetch<{ data: TennisScheduleEntry[] }>(`/api/v3/tennis/tennis_schedule_entries${buildQuery(params)}`);
   },
 
   getScheduleEntry(id: string) {
@@ -58,8 +62,8 @@ export const tennis = {
     return apiFetch<{ data: string[] }>("/api/v4/tennis/countries");
   },
 
-  getTicker() {
-    return apiFetch<{ data: TennisMatch[] }>("/api/v4/tennis/ticker");
+  getTicker(params?: PageParams) {
+    return apiFetch<{ data: TennisMatch[] }>(`/api/v4/tennis/ticker${buildQuery(params)}`);
   },
 
   getMostFollowed(teamId: string) {
@@ -68,9 +72,9 @@ export const tennis = {
     );
   },
 
-  getMatchComments(matchId: string, locale = "en") {
+  getMatchComments(matchId: string, locale = "en", params?: PageParams) {
     return apiFetch<{ data: MatchComment[] }>(
-      `/api/v4/tennis/match_comments?match_id=${matchId}&locale=${locale}`
+      `/api/v4/tennis/match_comments${buildQuery({ match_id: matchId, locale, ...params })}`
     );
   },
 
