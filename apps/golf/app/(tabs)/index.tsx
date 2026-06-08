@@ -1,102 +1,148 @@
-import React, { useEffect, useState } from "react";
+import React, { useCallback, useEffect, useMemo, useState } from "react";
 import {
-  View,
-  Text,
-  FlatList,
-  ActivityIndicator,
-  StyleSheet,
+  FlatList, View, Text, Image,
+  ActivityIndicator, StyleSheet, TouchableOpacity, RefreshControl,
 } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
-import { golf, GolfTournament, joinGolfChannel } from "@juno/api";
-import { colors, spacing, typography } from "@juno/ui";
+import { useRouter } from "expo-router";
+import { golf, GolfScheduleEntry, GolfTournament, useAuth } from "@juno/api";
+import { TopAppBar, SkeletonCard, useTheme, spacing, typography, radius, type Palette } from "@juno/ui";
 
 const TEAM_ID = process.env.EXPO_PUBLIC_GOLF_TEAM_ID ?? "00000000-0000-0000-0000-000000000001";
 
-export default function LeaderboardScreen() {
-  const [tournament, setTournament] = useState<GolfTournament | null>(null);
+export default function HomeScreen() {
+  const { colors } = useTheme();
+  const styles = useMemo(() => createStyles(colors), [colors]);
+  const [entries, setEntries] = useState<GolfScheduleEntry[]>([]);
+  const [liveTournament, setLiveTournament] = useState<GolfTournament | null>(null);
   const [loading, setLoading] = useState(true);
+  const [refreshing, setRefreshing] = useState(false);
+  const router = useRouter();
+  const { session } = useAuth();
 
-  useEffect(() => {
-    golf
-      .getTournaments(TEAM_ID)
-      .then(({ data }) => {
-        // Pick the first tournament that has events (scores), fall back to first
-        const active = data.find((t) => t.events?.length > 0) ?? data[0] ?? null;
-        setTournament(active);
-        setLoading(false);
-      })
-      .catch(() => setLoading(false));
-
-    const channel = joinGolfChannel(TEAM_ID, {
-      onState: (t) => setTournament(t),
-      onDelta: (diff) => {
-        setTournament((prev) => (prev ? { ...prev, ...diff } : prev));
-      },
+  const load = useCallback(() => {
+    return Promise.all([
+      golf.getScheduleEntries(),
+      golf.getTournaments(TEAM_ID),
+    ]).then(([{ data: scheduleData }, { data: tournaments }]) => {
+      setEntries(scheduleData);
+      const active = tournaments.find((t) => t.events?.some((e) => e.live)) ?? null;
+      setLiveTournament(active);
     });
-
-    return () => { channel.leave(); };
   }, []);
 
-  if (loading) {
-    return (
-      <SafeAreaView style={styles.center}>
-        <ActivityIndicator color={colors.primary} />
-      </SafeAreaView>
-    );
-  }
+  useEffect(() => {
+    load().finally(() => setLoading(false));
+  }, [load]);
 
-  if (!tournament) {
-    return (
-      <SafeAreaView style={styles.center}>
-        <Text style={styles.empty}>No active tournament</Text>
-      </SafeAreaView>
-    );
+  function onRefresh() {
+    setRefreshing(true);
+    load().finally(() => setRefreshing(false));
   }
-
-  const scores = tournament.events?.[0]?.scores ?? [];
 
   return (
-    <SafeAreaView style={styles.container}>
-      <View style={styles.header}>
-        <Text style={styles.title}>{tournament.name}</Text>
-        <Text style={styles.subtitle}>{tournament.events?.[0]?.name}</Text>
-      </View>
-      <FlatList
-        data={scores}
-        keyExtractor={(s) => s.id}
-        renderItem={({ item }) => (
-          <View style={styles.row}>
-            <Text style={styles.place}>{item.display_place ?? "—"}</Text>
-            <View style={styles.playerInfo}>
-              <Text style={styles.playerName}>
-                {item.player?.first_name} {item.player?.last_name}
-              </Text>
-              <Text style={styles.country}>{item.player?.country}</Text>
-            </View>
-            <Text style={[styles.score, item.par < 0 && styles.under]}>
-              {item.par === 0 ? "E" : item.par > 0 ? `+${item.par}` : item.par}
-            </Text>
-          </View>
-        )}
-        ItemSeparatorComponent={() => <View style={styles.separator} />}
+    <SafeAreaView style={styles.container} edges={["top", "left", "right"]}>
+      <TopAppBar
+        title="Home"
+        avatarUri={null}
+        avatarInitials={session?.fan_id?.[0]?.toUpperCase() ?? "?"}
+        onAvatarPress={() => router.push("/profile")}
       />
+      {loading ? (
+        <View style={styles.list}>
+          <SkeletonCard />
+          <SkeletonCard />
+          <SkeletonCard />
+        </View>
+      ) : (
+        <FlatList
+          data={entries}
+          keyExtractor={(e) => e.id}
+          contentContainerStyle={styles.list}
+          refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor={colors.primary} />}
+          ListHeaderComponent={
+            liveTournament ? (
+              <TouchableOpacity
+                style={styles.liveCard}
+                activeOpacity={0.8}
+                onPress={() => router.push("/(tabs)/tournaments")}
+              >
+                <View style={styles.liveDot} />
+                <View style={styles.liveInfo}>
+                  <Text style={styles.liveLabel}>Live now</Text>
+                  <Text style={styles.liveName}>{liveTournament.name}</Text>
+                </View>
+                <Text style={styles.liveCta}>View scores →</Text>
+              </TouchableOpacity>
+            ) : null
+          }
+          ListHeaderComponentStyle={styles.listHeader}
+          renderItem={({ item }) => (
+            <TouchableOpacity
+              style={styles.card}
+              onPress={() => router.push(`/tournament/${item.id}`)}
+            >
+              {item.image_url && (
+                <Image source={{ uri: item.image_url }} style={styles.image} />
+              )}
+              <View style={styles.info}>
+                <Text style={styles.name}>{item.name}</Text>
+                <Text style={styles.dates}>
+                  {item.start_date?.slice(0, 10)} – {item.end_date?.slice(0, 10)}
+                </Text>
+                {item.winners_name && (
+                  <Text style={styles.winner}>
+                    {item.winners_name} · {item.winners_score}
+                  </Text>
+                )}
+              </View>
+            </TouchableOpacity>
+          )}
+        />
+      )}
     </SafeAreaView>
   );
 }
 
-const styles = StyleSheet.create({
-  container: { flex: 1, backgroundColor: colors.background },
-  center: { flex: 1, alignItems: "center", justifyContent: "center", backgroundColor: colors.background },
-  header: { padding: spacing.md, borderBottomWidth: 1, borderBottomColor: colors.border, backgroundColor: colors.card },
-  title: { ...typography.h2, color: colors.text },
-  subtitle: { ...typography.caption, color: colors.textSecondary, marginTop: 2 },
-  row: { flexDirection: "row", alignItems: "center", padding: spacing.md, backgroundColor: colors.card },
-  place: { width: 36, ...typography.label, color: colors.textSecondary },
-  playerInfo: { flex: 1 },
-  playerName: { ...typography.body, color: colors.text, fontWeight: "600" },
-  country: { ...typography.caption, color: colors.textSecondary },
-  score: { ...typography.h3, color: colors.text },
-  under: { color: colors.live },
-  separator: { height: 1, backgroundColor: colors.border },
-  empty: { ...typography.body, color: colors.textSecondary },
-});
+function createStyles(colors: Palette) {
+  return StyleSheet.create({
+    container: { flex: 1, backgroundColor: colors.background },
+    center: { flex: 1, alignItems: "center", justifyContent: "center", backgroundColor: colors.background },
+    list: { padding: spacing.md },
+    listHeader: { marginBottom: spacing.sm },
+    liveCard: {
+      flexDirection: "row",
+      alignItems: "center",
+      backgroundColor: colors.primary,
+      borderRadius: radius.md,
+      padding: spacing.md,
+      marginBottom: spacing.md,
+    },
+    liveDot: {
+      width: 10,
+      height: 10,
+      borderRadius: radius.full,
+      backgroundColor: colors.secondary,
+      marginRight: spacing.sm,
+    },
+    liveInfo: { flex: 1 },
+    liveLabel: { ...typography.caption, color: colors.textOnPrimary, opacity: 0.8 },
+    liveName: { ...typography.h3, color: colors.textOnPrimary, marginTop: 2 },
+    liveCta: { ...typography.label, color: colors.textOnPrimary, fontWeight: "700" },
+    card: {
+      backgroundColor: colors.card,
+      borderRadius: radius.md,
+      marginBottom: spacing.sm,
+      overflow: "hidden",
+      shadowColor: "#000",
+      shadowOpacity: 0.05,
+      shadowRadius: 4,
+      elevation: 2,
+    },
+    image: { width: "100%", height: 140 },
+    info: { padding: spacing.md },
+    name: { ...typography.h3, color: colors.text },
+    dates: { ...typography.caption, color: colors.textSecondary, marginTop: 4 },
+    winner: { ...typography.caption, color: colors.textSecondary, marginTop: 4 },
+  });
+}

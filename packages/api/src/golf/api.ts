@@ -1,5 +1,5 @@
 import { apiFetch } from "../client";
-import type { GolfPlayer, GolfTournament, GolfScheduleEntry } from "./types";
+import type { GolfPlayer, GolfTournament, GolfScheduleEntry, PlayerSeasonRank } from "./types";
 
 export const golf = {
   getPlayers(params?: { sort?: string; page?: number }) {
@@ -13,6 +13,10 @@ export const golf = {
 
   getPlayerScores(id: string) {
     return apiFetch<{ data: unknown[] }>(`/api/v4/golf/players/${id}/scores`);
+  },
+
+  getPlayerSeasonRanks(id: string) {
+    return apiFetch<{ data: PlayerSeasonRank[] }>(`/api/v4/golf/players/${id}/season_ranks/standings`);
   },
 
   getTournaments(teamId: string, params?: { hide_scores?: boolean }) {
@@ -46,5 +50,13 @@ export const golf = {
 
   getFollowedPlayers(token: string) {
     return apiFetch<{ data: string[] }>("/api/v4/golf/players/followed_players", { token });
+  },
+
+  bulkFollowPlayers(playerIds: string[], token: string) {
+    return apiFetch("/api/v4/golf/players/bulk_follow_players", {
+      method: "POST",
+      body: { golfer_ids: playerIds },
+      token,
+    });
   },
 };

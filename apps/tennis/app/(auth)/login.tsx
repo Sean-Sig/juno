@@ -1,4 +1,4 @@
-import React, { useState } from "react";
+import React, { useMemo, useState } from "react";
 import {
   View,
   Text,
@@ -12,11 +12,13 @@ import {
 import { SafeAreaView } from "react-native-safe-area-context";
 import { useRouter } from "expo-router";
 import { useAuth } from "@juno/api";
-import { colors, spacing, typography, radius } from "@juno/ui";
+import { useTheme, spacing, typography, radius, type Palette } from "@juno/ui";
 
 const ACCOUNT_ID = process.env.EXPO_PUBLIC_ACCOUNT_ID ?? "00000000-0000-0000-0000-000000000003";
 
 export default function LoginScreen() {
+  const { colors } = useTheme();
+  const styles = useMemo(() => createStyles(colors), [colors]);
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [emailError, setEmailError] = useState("");
@@ -104,7 +106,8 @@ export default function LoginScreen() {
   );
 }
 
-const styles = StyleSheet.create({
+function createStyles(colors: Palette) {
+  return StyleSheet.create({
   container: { flex: 1, backgroundColor: colors.background },
   inner: { flex: 1, padding: spacing.lg, justifyContent: "center" },
   title: { ...typography.h1, color: colors.text, marginBottom: spacing.lg, textAlign: "center" },
@@ -132,3 +135,4 @@ const styles = StyleSheet.create({
   buttonText: { ...typography.body, color: colors.card, fontWeight: "700" },
   link: { ...typography.body, color: colors.primary, textAlign: "center" },
 });
+}

@@ -1,152 +1,143 @@
-import React, { useEffect, useState } from "react";
+import React, { useCallback, useEffect, useMemo, useState } from "react";
 import {
-  View, Text, FlatList,
-  ActivityIndicator, StyleSheet, TouchableOpacity,
+  FlatList, View, Text, Image,
+  ActivityIndicator, StyleSheet, TouchableOpacity, RefreshControl,
 } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { useRouter } from "expo-router";
-import { tennis, TennisMatch, TennisPlayer } from "@juno/api";
-import { LiveBadge, colors, spacing, typography, radius } from "@juno/ui";
+import { tennis, TennisScheduleEntry, TennisMatch, useAuth } from "@juno/api";
+import { TopAppBar, SkeletonCard, useTheme, spacing, typography, radius, type Palette } from "@juno/ui";
 
-const TEAM_ID = process.env.EXPO_PUBLIC_TENNIS_TEAM_ID ?? "00000000-0000-0000-0000-000000000002";
-
-function playerName(player: TennisPlayer | undefined): string {
-  if (!player) return "TBD";
-  const first = player.display_first_name ?? player.first_name;
-  const last = player.display_last_name ?? player.last_name;
-  return `${first} ${last}`;
-}
-
-export default function ScoresScreen() {
-  const [matches, setMatches] = useState<TennisMatch[]>([]);
-  const [playerMap, setPlayerMap] = useState<Map<string, TennisPlayer>>(new Map());
+export default function HomeScreen() {
+  const { colors } = useTheme();
+  const styles = useMemo(() => createStyles(colors), [colors]);
+  const [entries, setEntries] = useState<TennisScheduleEntry[]>([]);
+  const [liveMatches, setLiveMatches] = useState<TennisMatch[]>([]);
   const [loading, setLoading] = useState(true);
+  const [refreshing, setRefreshing] = useState(false);
   const router = useRouter();
+  const { session } = useAuth();
 
-  useEffect(() => {
-    Promise.all([
-      tennis.getTournamentMatches(TEAM_ID),
-      tennis.getTournamentPlayers(TEAM_ID),
-    ]).then(([{ data: matchData }, { data: playerData }]) => {
-      setMatches(matchData);
-      const map = new Map<string, TennisPlayer>();
-      for (const p of playerData) map.set(p.id, p);
-      setPlayerMap(map);
-      setLoading(false);
+  const load = useCallback(() => {
+    return Promise.all([
+      tennis.getScheduleEntries(),
+      tennis.getTicker(),
+    ]).then(([{ data: scheduleData }, { data: ticker }]) => {
+      setEntries(scheduleData);
+      setLiveMatches(ticker.filter((m) => ["on_court", "warmup", "playing"].includes(m.status)));
     });
   }, []);
 
-  if (loading) {
-    return (
-      <SafeAreaView style={styles.center}>
-        <ActivityIndicator color={colors.primary} />
-      </SafeAreaView>
-    );
+  useEffect(() => {
+    load().finally(() => setLoading(false));
+  }, [load]);
+
+  function onRefresh() {
+    setRefreshing(true);
+    load().finally(() => setRefreshing(false));
   }
 
   return (
-    <SafeAreaView style={styles.container}>
-      <FlatList
-        data={matches}
-        keyExtractor={(m) => m.id}
-        contentContainerStyle={styles.list}
-        renderItem={({ item }) => (
-          <MatchRow
-            match={item}
-            playerMap={playerMap}
-            onPress={() => {
-              const p1 = item.player1_id ? playerMap.get(item.player1_id) : undefined;
-              const p2 = item.player2_id ? playerMap.get(item.player2_id) : undefined;
-              router.push({
-                pathname: `/match/${item.id}`,
-                params: {
-                  p1Name: playerName(p1),
-                  p2Name: playerName(p2),
-                },
-              });
-            }}
-          />
-        )}
+    <SafeAreaView style={styles.container} edges={["top", "left", "right"]}>
+      <TopAppBar
+        title="Home"
+        avatarUri={null}
+        avatarInitials={session?.fan_id?.[0]?.toUpperCase() ?? "?"}
+        onAvatarPress={() => router.push("/profile")}
       />
+      {loading ? (
+        <View style={styles.list}>
+          <SkeletonCard />
+          <SkeletonCard />
+          <SkeletonCard />
+        </View>
+      ) : (
+        <FlatList
+          data={entries}
+          keyExtractor={(e) => e.id}
+          contentContainerStyle={styles.list}
+          refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor={colors.primary} />}
+          ListHeaderComponent={
+            liveMatches.length > 0 ? (
+              <TouchableOpacity
+                style={styles.liveCard}
+                activeOpacity={0.8}
+                onPress={() => router.push("/(tabs)/matches")}
+              >
+                <View style={styles.liveDot} />
+                <View style={styles.liveInfo}>
+                  <Text style={styles.liveLabel}>Live now</Text>
+                  <Text style={styles.liveName}>
+                    {liveMatches.length} {liveMatches.length === 1 ? "match" : "matches"} in progress
+                  </Text>
+                </View>
+                <Text style={styles.liveCta}>View scores →</Text>
+              </TouchableOpacity>
+            ) : null
+          }
+          ListHeaderComponentStyle={styles.listHeader}
+          renderItem={({ item }) => (
+            <TouchableOpacity
+              style={styles.card}
+              onPress={() => router.push(`/tournament/${item.id}`)}
+            >
+              {item.image_url && (
+                <Image source={{ uri: item.image_url }} style={styles.image} />
+              )}
+              <View style={styles.info}>
+                <Text style={styles.name}>{item.name}</Text>
+                <Text style={styles.dates}>
+                  {item.start_date?.slice(0, 10)} – {item.end_date?.slice(0, 10)}
+                </Text>
+                <Text style={styles.level}>{item.partnership_level.toUpperCase()}</Text>
+              </View>
+            </TouchableOpacity>
+          )}
+        />
+      )}
     </SafeAreaView>
   );
 }
 
-function MatchRow({
-  match,
-  playerMap,
-  onPress,
-}: {
-  match: TennisMatch;
-  playerMap: Map<string, TennisPlayer>;
-  onPress: () => void;
-}) {
-  const isLive = ["on_court", "warmup", "playing"].includes(match.status);
-  const isFinished = match.status.startsWith("finished");
-  const p1 = match.player1_id ? playerMap.get(match.player1_id) : undefined;
-  const p2 = match.player2_id ? playerMap.get(match.player2_id) : undefined;
-
-  return (
-    <TouchableOpacity style={styles.card} onPress={onPress} activeOpacity={0.7}>
-      <View style={styles.cardHeader}>
-        <Text style={styles.round}>{match.round} · {match.type}</Text>
-        {isLive && <LiveBadge />}
-        {isFinished && <Text style={styles.finishedBadge}>Final</Text>}
-        {match.court && <Text style={styles.court}>{match.court}</Text>}
-      </View>
-
-      <View style={styles.scoreRow}>
-        <View style={styles.playerCol}>
-          <Text style={[styles.playerName, match.winner === 1 && styles.winner]}>
-            {playerName(p1)} {match.winner === 1 ? "✓" : ""}
-          </Text>
-          <Text style={[styles.playerName, match.winner === 2 && styles.winner]}>
-            {playerName(p2)} {match.winner === 2 ? "✓" : ""}
-          </Text>
-        </View>
-        <View style={styles.setsCol}>
-          {(match.sets ?? []).map((set, i) => (
-            <View key={i} style={styles.setCol}>
-              <Text style={styles.setScore}>{set["1"].games}</Text>
-              <Text style={styles.setScore}>{set["2"].games}</Text>
-            </View>
-          ))}
-          {isLive && match.live && (
-            <View style={styles.setCol}>
-              <Text style={[styles.setScore, styles.liveScore]}>{match.live.game_score_1}</Text>
-              <Text style={[styles.setScore, styles.liveScore]}>{match.live.game_score_2}</Text>
-            </View>
-          )}
-        </View>
-      </View>
-    </TouchableOpacity>
-  );
+function createStyles(colors: Palette) {
+  return StyleSheet.create({
+    container: { flex: 1, backgroundColor: colors.background },
+    center: { flex: 1, alignItems: "center", justifyContent: "center", backgroundColor: colors.background },
+    list: { padding: spacing.md },
+    listHeader: { marginBottom: spacing.sm },
+    liveCard: {
+      flexDirection: "row",
+      alignItems: "center",
+      backgroundColor: colors.primary,
+      borderRadius: radius.md,
+      padding: spacing.md,
+      marginBottom: spacing.md,
+    },
+    liveDot: {
+      width: 10,
+      height: 10,
+      borderRadius: radius.full,
+      backgroundColor: colors.secondary,
+      marginRight: spacing.sm,
+    },
+    liveInfo: { flex: 1 },
+    liveLabel: { ...typography.caption, color: colors.textOnPrimary, opacity: 0.8 },
+    liveName: { ...typography.h3, color: colors.textOnPrimary, marginTop: 2 },
+    liveCta: { ...typography.label, color: colors.textOnPrimary, fontWeight: "700" },
+    card: {
+      backgroundColor: colors.card,
+      borderRadius: radius.md,
+      marginBottom: spacing.sm,
+      overflow: "hidden",
+      shadowColor: "#000",
+      shadowOpacity: 0.05,
+      shadowRadius: 4,
+      elevation: 2,
+    },
+    image: { width: "100%", height: 140 },
+    info: { padding: spacing.md },
+    name: { ...typography.h3, color: colors.text },
+    dates: { ...typography.caption, color: colors.textSecondary, marginTop: 4 },
+    level: { ...typography.caption, color: colors.primary, marginTop: 4, fontWeight: "600" },
+  });
 }
-
-const styles = StyleSheet.create({
-  container: { flex: 1, backgroundColor: colors.background },
-  center: { flex: 1, alignItems: "center", justifyContent: "center", backgroundColor: colors.background },
-  list: { padding: spacing.md },
-  card: {
-    backgroundColor: colors.card,
-    borderRadius: radius.md,
-    padding: spacing.md,
-    marginBottom: spacing.sm,
-    shadowColor: "#000",
-    shadowOpacity: 0.05,
-    shadowRadius: 4,
-    elevation: 2,
-  },
-  cardHeader: { flexDirection: "row", alignItems: "center", gap: 8, marginBottom: spacing.sm },
-  round: { ...typography.caption, color: colors.textSecondary, flex: 1 },
-  court: { ...typography.caption, color: colors.textSecondary },
-  finishedBadge: { ...typography.caption, color: colors.textSecondary, fontWeight: "600" },
-  scoreRow: { flexDirection: "row", alignItems: "center" },
-  playerCol: { flex: 1 },
-  playerName: { ...typography.body, color: colors.text, marginBottom: 4 },
-  winner: { fontWeight: "700", color: colors.text },
-  setsCol: { flexDirection: "row", gap: 8 },
-  setCol: { alignItems: "center" },
-  setScore: { ...typography.body, color: colors.text, width: 20, textAlign: "center", marginBottom: 4 },
-  liveScore: { color: colors.live, fontWeight: "700" },
-});

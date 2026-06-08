@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from "react";
+import React, { useEffect, useMemo, useState } from "react";
 import {
   View,
   Text,
@@ -11,9 +11,11 @@ import {
 import { SafeAreaView } from "react-native-safe-area-context";
 import { useLocalSearchParams, useRouter } from "expo-router";
 import { golf, GolfPlayer, useAuth } from "@juno/api";
-import { colors, spacing, typography, radius } from "@juno/ui";
+import { useTheme, spacing, typography, radius, type Palette } from "@juno/ui";
 
 export default function GolfPlayerScreen() {
+  const { colors } = useTheme();
+  const styles = useMemo(() => createStyles(colors), [colors]);
   const { id } = useLocalSearchParams<{ id: string }>();
   const [player, setPlayer] = useState<GolfPlayer | null>(null);
   const [loading, setLoading] = useState(true);
@@ -135,7 +137,8 @@ export default function GolfPlayerScreen() {
   );
 }
 
-const styles = StyleSheet.create({
+function createStyles(colors: Palette) {
+  return StyleSheet.create({
   container: { flex: 1, backgroundColor: colors.background },
   center: { flex: 1, alignItems: "center", justifyContent: "center", backgroundColor: colors.background },
   header: {
@@ -213,4 +216,5 @@ const styles = StyleSheet.create({
   statValue: { ...typography.h2, color: colors.primary },
   statLabel: { ...typography.caption, color: colors.textSecondary, marginTop: spacing.xs },
   empty: { ...typography.body, color: colors.textSecondary },
-});
+  });
+}

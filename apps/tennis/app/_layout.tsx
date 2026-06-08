@@ -4,12 +4,13 @@ import { View, ActivityIndicator } from "react-native";
 import * as SplashScreen from "expo-splash-screen";
 import { useEffect } from "react";
 import { AuthProvider, useAuth } from "@juno/api";
-import { colors } from "@juno/ui";
+import { ThemeProvider, useTheme } from "@juno/ui";
 
 SplashScreen.preventAutoHideAsync();
 
 function RootNavigator() {
   const { session, isLoading } = useAuth();
+  const { colors, mode } = useTheme();
   const segments = useSegments();
   const router = useRouter();
 
@@ -32,14 +33,20 @@ function RootNavigator() {
     );
   }
 
-  return <Stack screenOptions={{ headerShown: false }} />;
+  return (
+    <>
+      <StatusBar style={mode === "dark" ? "light" : "dark"} />
+      <Stack screenOptions={{ headerShown: false }} />
+    </>
+  );
 }
 
 export default function RootLayout() {
   return (
-    <AuthProvider sessionKey="juno_tennis_session">
-      <StatusBar style="dark" />
-      <RootNavigator />
-    </AuthProvider>
+    <ThemeProvider sport="tennis">
+      <AuthProvider sessionKey="juno_tennis_session">
+        <RootNavigator />
+      </AuthProvider>
+    </ThemeProvider>
   );
 }

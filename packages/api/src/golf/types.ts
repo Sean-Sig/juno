@@ -79,6 +79,16 @@ export type GolfTournament = {
   events: GolfEvent[];
 };
 
+export type PlayerSeasonRank = {
+  id: string;
+  player_id: string;
+  year: number;
+  standing_name: string;
+  standing_type: string;
+  rank: number | null;
+  value: string | null;
+};
+
 export type GolfScheduleEntry = {
   id: string;
   team_id: string;

@@ -11,6 +11,9 @@
     "react": "*",
     "react-native": "*"
   },
+  "dependencies": {
+    "@expo/vector-icons": "*"
+  },
   "devDependencies": {
     "@juno/config": "*",
     "typescript": "~6.0.3",

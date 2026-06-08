@@ -93,4 +93,12 @@ export const tennis = {
   getFollowedPlayers(token: string) {
     return apiFetch<{ data: string[] }>("/api/v3/tennis/players/followed_players", { token });
   },
+
+  bulkFollowPlayers(playerIds: string[], token: string) {
+    return apiFetch("/api/v3/tennis/players/bulk_follow_players", {
+      method: "POST",
+      body: { player_ids: playerIds },
+      token,
+    });
+  },
 };

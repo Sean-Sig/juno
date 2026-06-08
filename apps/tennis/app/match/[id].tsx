@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from "react";
+import React, { useEffect, useMemo, useState } from "react";
 import {
   View, Text, FlatList,
   ActivityIndicator, StyleSheet, TouchableOpacity,
@@ -6,7 +6,7 @@ import {
 import { SafeAreaView } from "react-native-safe-area-context";
 import { useLocalSearchParams, useRouter } from "expo-router";
 import { tennis, TennisMatch, TennisPlayer, MatchComment, joinTennisMatchChannel } from "@juno/api";
-import { LiveBadge, colors, spacing, typography, radius } from "@juno/ui";
+import { LiveBadge, useTheme, spacing, typography, radius, type Palette } from "@juno/ui";
 import { Channel } from "phoenix";
 
 function playerName(player: TennisPlayer | null, fallback?: string): string {
@@ -19,6 +19,8 @@ function playerName(player: TennisPlayer | null, fallback?: string): string {
 }
 
 export default function MatchScreen() {
+  const { colors } = useTheme();
+  const styles = useMemo(() => createStyles(colors), [colors]);
   const { id, p1Name, p2Name } = useLocalSearchParams<{
     id: string;
     p1Name?: string;
@@ -131,31 +133,33 @@ export default function MatchScreen() {
   );
 }
 
-const styles = StyleSheet.create({
-  container: { flex: 1, backgroundColor: colors.background },
-  center: { flex: 1, alignItems: "center", justifyContent: "center", backgroundColor: colors.background },
-  header: {
-    flexDirection: "row", alignItems: "center", gap: spacing.sm,
-    padding: spacing.md, backgroundColor: colors.card,
-    borderBottomWidth: 1, borderBottomColor: colors.border,
-  },
-  back: { marginRight: spacing.sm },
-  backText: { ...typography.body, color: colors.primary },
-  title: { ...typography.h3, color: colors.text, flex: 1 },
-  scoreboard: {
-    backgroundColor: colors.card, padding: spacing.md,
-    margin: spacing.md, borderRadius: radius.md,
-    shadowColor: "#000", shadowOpacity: 0.05, shadowRadius: 4, elevation: 2,
-  },
-  scoreRow: { flexDirection: "row", alignItems: "center", marginBottom: spacing.sm },
-  playerLabel: { flex: 1, ...typography.body, color: colors.text },
-  winner: { fontWeight: "700" },
-  sets: { flexDirection: "row", gap: spacing.sm },
-  setNum: { ...typography.h3, color: colors.text, width: 24, textAlign: "center" },
-  liveGame: { ...typography.h3, color: colors.live, fontWeight: "700", width: 32, textAlign: "center" },
-  commentsSection: { flex: 1, margin: spacing.md },
-  sectionTitle: { ...typography.h3, color: colors.text, marginBottom: spacing.sm },
-  comment: { paddingVertical: spacing.sm },
-  commentBody: { ...typography.body, color: colors.text },
-  separator: { height: 1, backgroundColor: colors.border },
-});
+function createStyles(colors: Palette) {
+  return StyleSheet.create({
+    container: { flex: 1, backgroundColor: colors.background },
+    center: { flex: 1, alignItems: "center", justifyContent: "center", backgroundColor: colors.background },
+    header: {
+      flexDirection: "row", alignItems: "center", gap: spacing.sm,
+      padding: spacing.md, backgroundColor: colors.card,
+      borderBottomWidth: 1, borderBottomColor: colors.border,
+    },
+    back: { marginRight: spacing.sm },
+    backText: { ...typography.body, color: colors.primary },
+    title: { ...typography.h3, color: colors.text, flex: 1 },
+    scoreboard: {
+      backgroundColor: colors.card, padding: spacing.md,
+      margin: spacing.md, borderRadius: radius.md,
+      shadowColor: "#000", shadowOpacity: 0.05, shadowRadius: 4, elevation: 2,
+    },
+    scoreRow: { flexDirection: "row", alignItems: "center", marginBottom: spacing.sm },
+    playerLabel: { flex: 1, ...typography.body, color: colors.text },
+    winner: { fontWeight: "700" },
+    sets: { flexDirection: "row", gap: spacing.sm },
+    setNum: { ...typography.h3, color: colors.text, width: 24, textAlign: "center" },
+    liveGame: { ...typography.h3, color: colors.live, fontWeight: "700", width: 32, textAlign: "center" },
+    commentsSection: { flex: 1, margin: spacing.md },
+    sectionTitle: { ...typography.h3, color: colors.text, marginBottom: spacing.sm },
+    comment: { paddingVertical: spacing.sm },
+    commentBody: { ...typography.body, color: colors.text },
+    separator: { height: 1, backgroundColor: colors.border },
+  });
+}

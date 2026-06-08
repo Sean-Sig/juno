@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from "react";
+import React, { useEffect, useMemo, useState } from "react";
 import {
   View,
   Text,
@@ -11,9 +11,11 @@ import {
 import { SafeAreaView } from "react-native-safe-area-context";
 import { useLocalSearchParams, useRouter } from "expo-router";
 import { tennis, TennisPlayer, TennisMatch, useAuth } from "@juno/api";
-import { LiveBadge, colors, spacing, typography, radius } from "@juno/ui";
+import { LiveBadge, useTheme, spacing, typography, radius, type Palette } from "@juno/ui";
 
 export default function TennisPlayerScreen() {
+  const { colors } = useTheme();
+  const styles = useMemo(() => createStyles(colors), [colors]);
   const { id } = useLocalSearchParams<{ id: string }>();
   const [player, setPlayer] = useState<TennisPlayer | null>(null);
   const [recentMatch, setRecentMatch] = useState<TennisMatch | null>(null);
@@ -188,7 +190,8 @@ export default function TennisPlayerScreen() {
   );
 }
 
-const styles = StyleSheet.create({
+function createStyles(colors: Palette) {
+  return StyleSheet.create({
   container: { flex: 1, backgroundColor: colors.background },
   center: { flex: 1, alignItems: "center", justifyContent: "center", backgroundColor: colors.background },
   header: {
@@ -290,4 +293,5 @@ const styles = StyleSheet.create({
   setScore: { ...typography.body, color: colors.text, width: 20, textAlign: "center" },
   liveScore: { ...typography.body, color: colors.live, fontWeight: "700", marginTop: spacing.sm },
   empty: { ...typography.body, color: colors.textSecondary },
-});
+  });
+}

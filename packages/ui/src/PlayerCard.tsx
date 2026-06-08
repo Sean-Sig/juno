@@ -1,6 +1,9 @@
-import React from "react";
+import React, { useMemo } from "react";
 import { View, Text, Image, StyleSheet, TouchableOpacity } from "react-native";
-import { colors, spacing, radius, typography } from "./theme";
+import { Ionicons } from "@expo/vector-icons";
+import { useTheme } from "./ThemeProvider";
+import type { Palette } from "./theme";
+import { spacing, radius, typography } from "./theme";
 
 type Props = {
   firstName: string;
@@ -9,10 +12,25 @@ type Props = {
   photo?: string | null;
   rank?: number | null;
   rankLabel?: string;
+  following?: boolean;
+  onToggleFollow?: () => void;
   onPress?: () => void;
 };
 
-export function PlayerCard({ firstName, lastName, country, photo, rank, rankLabel = "Rank", onPress }: Props) {
+export function PlayerCard({
+  firstName,
+  lastName,
+  country,
+  photo,
+  rank,
+  rankLabel = "Rank",
+  following,
+  onToggleFollow,
+  onPress,
+}: Props) {
+  const { colors } = useTheme();
+  const styles = useMemo(() => createStyles(colors), [colors]);
+
   return (
     <TouchableOpacity style={styles.container} onPress={onPress} activeOpacity={0.7}>
       {photo ? (
@@ -34,63 +52,85 @@ export function PlayerCard({ firstName, lastName, country, photo, rank, rankLabe
           <Text style={styles.rankValue}>#{rank}</Text>
         </View>
       )}
+      {onToggleFollow && (
+        <TouchableOpacity
+          style={styles.followButton}
+          onPress={(e) => {
+            e.stopPropagation();
+            onToggleFollow();
+          }}
+          hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+        >
+          <Ionicons
+            name={following ? "star" : "star-outline"}
+            size={22}
+            color={following ? colors.secondary : colors.textSecondary}
+          />
+        </TouchableOpacity>
+      )}
     </TouchableOpacity>
   );
 }
 
-const styles = StyleSheet.create({
-  container: {
-    flexDirection: "row",
-    alignItems: "center",
-    backgroundColor: colors.card,
-    borderRadius: radius.md,
-    padding: spacing.md,
-    marginBottom: spacing.sm,
-    shadowColor: "#000",
-    shadowOpacity: 0.05,
-    shadowRadius: 4,
-    elevation: 2,
-  },
-  photo: {
-    width: 48,
-    height: 48,
-    borderRadius: radius.full,
-    marginRight: spacing.md,
-  },
-  photoPlaceholder: {
-    width: 48,
-    height: 48,
-    borderRadius: radius.full,
-    backgroundColor: colors.border,
-    alignItems: "center",
-    justifyContent: "center",
-    marginRight: spacing.md,
-  },
-  initials: {
-    ...typography.label,
-    color: colors.textSecondary,
-  },
-  info: {
-    flex: 1,
-  },
-  name: {
-    ...typography.h3,
-    color: colors.text,
-  },
-  country: {
-    ...typography.caption,
-    color: colors.textSecondary,
-    marginTop: 2,
-  },
-  rankBadge: {
-    alignItems: "center",
-  },
-  rankLabel: {
-    ...typography.caption,
-    color: colors.textSecondary,
-  },
-  rankValue: {
-    ...typography.label,
-    color: colors.primary,
-  },
-});
+function createStyles(colors: Palette) {
+  return StyleSheet.create({
+    container: {
+      flexDirection: "row",
+      alignItems: "center",
+      backgroundColor: colors.card,
+      borderRadius: radius.md,
+      padding: spacing.md,
+      marginBottom: spacing.sm,
+      shadowColor: "#000",
+      shadowOpacity: 0.05,
+      shadowRadius: 4,
+      elevation: 2,
+    },
+    photo: {
+      width: 48,
+      height: 48,
+      borderRadius: radius.full,
+      marginRight: spacing.md,
+    },
+    photoPlaceholder: {
+      width: 48,
+      height: 48,
+      borderRadius: radius.full,
+      backgroundColor: colors.border,
+      alignItems: "center",
+      justifyContent: "center",
+      marginRight: spacing.md,
+    },
+    initials: {
+      ...typography.label,
+      color: colors.textSecondary,
+    },
+    info: {
+      flex: 1,
+    },
+    name: {
+      ...typography.h3,
+      color: colors.text,
+    },
+    country: {
+      ...typography.caption,
+      color: colors.textSecondary,
+      marginTop: 2,
+    },
+    rankBadge: {
+      alignItems: "center",
+    },
+    rankLabel: {
+      ...typography.caption,
+      color: colors.textSecondary,
+    },
+    rankValue: {
+      ...typography.label,
+      color: colors.primary,
+    },
+    followButton: {
+      marginLeft: spacing.sm,
+      padding: spacing.xs,
+    },
+  });
+}
