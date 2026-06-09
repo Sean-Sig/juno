@@ -8,6 +8,11 @@ import type {
 } from "./types";
 
 export const tennis = {
+  // V4 — global player list (sort: "singles_rank" | "doubles_rank", gender: "male" | "female", paginated)
+  getPlayers(params?: { sort?: string; gender?: "male" | "female" } & PageParams) {
+    return apiFetch<{ data: TennisPlayer[] }>(`/api/v4/tennis/players${buildQuery(params)}`);
+  },
+
   // V3
   getPlayer(id: string) {
     return apiFetch<{ data: TennisPlayer }>(`/api/v3/tennis/players/${id}`);

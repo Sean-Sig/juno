@@ -97,20 +97,6 @@ export default function RankingsScreen() {
 
   return (
     <SafeAreaView style={styles.container} edges={["top", "left", "right"]}>
-      <View style={styles.segmented}>
-        {RANKING_TYPES.map((type) => (
-          <TouchableOpacity
-            key={type.key}
-            style={[styles.segment, rankingType.key === type.key && styles.segmentActive]}
-            onPress={() => setRankingType(type)}
-          >
-            <Text style={[styles.segmentText, rankingType.key === type.key && styles.segmentTextActive]}>
-              {type.label}
-            </Text>
-          </TouchableOpacity>
-        ))}
-      </View>
-
       <View style={styles.searchBar}>
         <TextInput
           style={styles.input}
@@ -120,6 +106,25 @@ export default function RankingsScreen() {
           placeholderTextColor={colors.textSecondary}
         />
       </View>
+
+      <FlatList
+        horizontal
+        data={RANKING_TYPES}
+        keyExtractor={(t) => t.key}
+        showsHorizontalScrollIndicator={false}
+        style={styles.typePicker}
+        contentContainerStyle={styles.typePickerContent}
+        renderItem={({ item: type }) => (
+          <TouchableOpacity
+            style={[styles.typeChip, rankingType.key === type.key && styles.typeChipActive]}
+            onPress={() => setRankingType(type)}
+          >
+            <Text style={[styles.typeChipText, rankingType.key === type.key && styles.typeChipTextActive]}>
+              {type.label}
+            </Text>
+          </TouchableOpacity>
+        )}
+      />
 
       {loading ? (
         <View style={styles.list}>
@@ -159,23 +164,25 @@ export default function RankingsScreen() {
 function createStyles(colors: Palette) {
   return StyleSheet.create({
     container: { flex: 1, backgroundColor: colors.background },
-    segmented: {
-      flexDirection: "row",
-      margin: spacing.md,
-      marginBottom: 0,
-      backgroundColor: colors.card,
-      borderRadius: radius.full,
-      padding: spacing.xs / 2,
+    typePicker: {
+      marginHorizontal: spacing.md,
+      marginTop: 0,
+      marginBottom: spacing.sm,
+      flexGrow: 0,
+      flexShrink: 0,
     },
-    segment: {
-      flex: 1,
+    typePickerContent: {
+      gap: spacing.xs,
+    },
+    typeChip: {
       paddingVertical: spacing.sm,
+      paddingHorizontal: spacing.md,
       borderRadius: radius.full,
-      alignItems: "center",
+      backgroundColor: colors.card,
     },
-    segmentActive: { backgroundColor: colors.primary },
-    segmentText: { ...typography.label, color: colors.textSecondary },
-    segmentTextActive: { color: colors.textOnPrimary, fontWeight: "700" },
+    typeChipActive: { backgroundColor: colors.primary },
+    typeChipText: { ...typography.label, color: colors.textSecondary },
+    typeChipTextActive: { color: colors.textOnPrimary, fontWeight: "700" },
     searchBar: { padding: spacing.md },
     input: {
       backgroundColor: colors.card,

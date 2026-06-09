@@ -5,20 +5,28 @@ import { useRouter } from "expo-router";
 import { tennis, TennisPlayer, useAuth } from "@juno/api";
 import { PlayerCard, SkeletonCard, useTheme, spacing, radius, typography, type Palette } from "@juno/ui";
 
-const TEAM_ID = process.env.EXPO_PUBLIC_TENNIS_TEAM_ID ?? "00000000-0000-0000-0000-000000000002";
+type Gender = "male" | "female";
 
 type RankingType = {
   key: string;
   label: string;
+  sort: string;
   rankOf: (p: TennisPlayer) => number | null;
   rankLabel: string;
 };
 
 const RANKING_TYPES: RankingType[] = [
-  { key: "singles", label: "Singles", rankOf: (p) => p.singles_rank, rankLabel: "Singles" },
-  { key: "doubles", label: "Doubles", rankOf: (p) => p.doubles_rank, rankLabel: "Doubles" },
-  { key: "race", label: "Race", rankOf: (p) => p.singles_race_rank, rankLabel: "Race" },
+  { key: "singles", label: "Singles", sort: "singles_rank", rankOf: (p) => p.singles_rank, rankLabel: "Singles" },
+  { key: "doubles", label: "Doubles", sort: "doubles_rank", rankOf: (p) => p.doubles_rank, rankLabel: "Doubles" },
+  { key: "race", label: "Race", sort: "singles_rank", rankOf: (p) => p.singles_race_rank, rankLabel: "Race" },
 ];
+
+const GENDERS: { key: Gender; label: string }[] = [
+  { key: "male", label: "Men" },
+  { key: "female", label: "Women" },
+];
+
+const PER_PAGE = 50;
 
 export default function RankingsScreen() {
   const { colors } = useTheme();
@@ -26,20 +34,43 @@ export default function RankingsScreen() {
   const { session } = useAuth();
   const router = useRouter();
   const [rankingType, setRankingType] = useState(RANKING_TYPES[0]);
+  const [gender, setGender] = useState<Gender>("male");
   const [players, setPlayers] = useState<TennisPlayer[]>([]);
   const [followedIds, setFollowedIds] = useState<string[]>([]);
   const [query, setQuery] = useState("");
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
+  const [loadingMore, setLoadingMore] = useState(false);
+  const [hasMore, setHasMore] = useState(true);
 
   const load = useCallback(() => {
-    return tennis.getTournamentPlayers(TEAM_ID).then(({ data }) => setPlayers(data));
-  }, []);
+    setHasMore(true);
+    return tennis
+      .getPlayers({ sort: rankingType.sort, gender, page: 1, per_page: PER_PAGE })
+      .then(({ data }) => {
+        setPlayers(data);
+        setHasMore(data.length === PER_PAGE);
+      });
+  }, [rankingType, gender]);
 
   useEffect(() => {
     setLoading(true);
     load().finally(() => setLoading(false));
   }, [load]);
+
+  function loadMore() {
+    if (loadingMore || !hasMore || loading || query.trim()) return;
+    setLoadingMore(true);
+    const nextPage = Math.floor(players.length / PER_PAGE) + 1;
+
+    tennis
+      .getPlayers({ sort: rankingType.sort, gender, page: nextPage, per_page: PER_PAGE })
+      .then(({ data }) => {
+        setPlayers((prev) => [...prev, ...data]);
+        setHasMore(data.length === PER_PAGE);
+      })
+      .finally(() => setLoadingMore(false));
+  }
 
   useEffect(() => {
     if (!session) {
@@ -49,8 +80,12 @@ export default function RankingsScreen() {
     tennis.getFollowedPlayers(session.token).then(({ data }) => setFollowedIds(data)).catch(() => {});
   }, [session]);
 
+  // Debounced search — switches to search endpoint while query is active
   useEffect(() => {
-    if (query.length < 2) return;
+    if (!query.trim()) {
+      load();
+      return;
+    }
     const timer = setTimeout(() => {
       tennis.searchPlayers(query).then(({ data }) => setPlayers(data));
     }, 300);
@@ -77,31 +112,34 @@ export default function RankingsScreen() {
     }
   }
 
-  const sorted = [...players].sort((a, b) => {
-    const ra = rankingType.rankOf(a);
-    const rb = rankingType.rankOf(b);
-    if (ra == null) return rb == null ? 0 : 1;
-    if (rb == null) return -1;
-    return ra - rb;
-  });
-
-  const filtered = sorted.filter((p) => {
-    if (!query.trim()) return true;
-    const name = `${p.display_first_name ?? p.first_name} ${p.display_last_name ?? p.last_name}`.toLowerCase();
-    return name.includes(query.trim().toLowerCase());
-  });
+  // When viewing the race tab, sort client-side on the loaded page (server returns singles_rank order)
+  const displayed = query.trim()
+    ? players.filter((p) => {
+        const name = `${p.display_first_name ?? p.first_name} ${p.display_last_name ?? p.last_name}`.toLowerCase();
+        return name.includes(query.trim().toLowerCase());
+      })
+    : rankingType.key === "race"
+    ? [...players].sort((a, b) => {
+        const ra = a.singles_race_rank;
+        const rb = b.singles_race_rank;
+        if (ra == null) return rb == null ? 0 : 1;
+        if (rb == null) return -1;
+        return ra - rb;
+      })
+    : players;
 
   return (
     <SafeAreaView style={styles.container} edges={["top", "left", "right"]}>
-      <View style={styles.segmented}>
-        {RANKING_TYPES.map((type) => (
+      {/* Men / Women toggle */}
+      <View style={styles.genderRow}>
+        {GENDERS.map((g) => (
           <TouchableOpacity
-            key={type.key}
-            style={[styles.segment, rankingType.key === type.key && styles.segmentActive]}
-            onPress={() => setRankingType(type)}
+            key={g.key}
+            style={[styles.genderBtn, gender === g.key && styles.genderBtnActive]}
+            onPress={() => { setQuery(""); setGender(g.key); }}
           >
-            <Text style={[styles.segmentText, rankingType.key === type.key && styles.segmentTextActive]}>
-              {type.label}
+            <Text style={[styles.genderText, gender === g.key && styles.genderTextActive]}>
+              {g.label}
             </Text>
           </TouchableOpacity>
         ))}
@@ -117,6 +155,26 @@ export default function RankingsScreen() {
         />
       </View>
 
+      {/* Singles / Doubles / Race — horizontal scrolling chips */}
+      <FlatList
+        horizontal
+        data={RANKING_TYPES}
+        keyExtractor={(t) => t.key}
+        showsHorizontalScrollIndicator={false}
+        style={styles.typePicker}
+        contentContainerStyle={styles.typePickerContent}
+        renderItem={({ item: type }) => (
+          <TouchableOpacity
+            style={[styles.typeChip, rankingType.key === type.key && styles.typeChipActive]}
+            onPress={() => setRankingType(type)}
+          >
+            <Text style={[styles.typeChipText, rankingType.key === type.key && styles.typeChipTextActive]}>
+              {type.label}
+            </Text>
+          </TouchableOpacity>
+        )}
+      />
+
       {loading ? (
         <View style={styles.list}>
           <SkeletonCard />
@@ -125,10 +183,13 @@ export default function RankingsScreen() {
         </View>
       ) : (
         <FlatList
-          data={filtered}
+          data={displayed}
           keyExtractor={(p) => p.id}
           contentContainerStyle={styles.list}
           refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor={colors.primary} />}
+          onEndReached={query.trim() ? undefined : loadMore}
+          onEndReachedThreshold={0.4}
+          ListFooterComponent={loadingMore ? <ActivityIndicator color={colors.primary} style={styles.footerSpinner} /> : null}
           renderItem={({ item }) => (
             <PlayerCard
               firstName={item.display_first_name ?? item.first_name}
@@ -152,23 +213,46 @@ export default function RankingsScreen() {
 function createStyles(colors: Palette) {
   return StyleSheet.create({
     container: { flex: 1, backgroundColor: colors.background },
-    segmented: {
+    genderRow: {
       flexDirection: "row",
-      margin: spacing.md,
-      marginBottom: 0,
-      backgroundColor: colors.card,
-      borderRadius: radius.full,
-      padding: spacing.xs / 2,
+      marginHorizontal: spacing.md,
+      marginTop: spacing.md,
+      gap: spacing.sm,
     },
-    segment: {
+    genderBtn: {
       flex: 1,
       paddingVertical: spacing.sm,
-      borderRadius: radius.full,
+      borderRadius: radius.md,
       alignItems: "center",
+      backgroundColor: colors.card,
+      borderWidth: 1.5,
+      borderColor: "transparent",
     },
-    segmentActive: { backgroundColor: colors.primary },
-    segmentText: { ...typography.label, color: colors.textSecondary },
-    segmentTextActive: { color: colors.textOnPrimary, fontWeight: "700" },
+    genderBtnActive: {
+      borderColor: colors.primary,
+      backgroundColor: colors.background,
+    },
+    genderText: { ...typography.label, color: colors.textSecondary },
+    genderTextActive: { color: colors.primary, fontWeight: "700" },
+    typePicker: {
+      marginHorizontal: spacing.md,
+      marginTop: 0,
+      marginBottom: spacing.sm,
+      flexGrow: 0,
+      flexShrink: 0,
+    },
+    typePickerContent: {
+      gap: spacing.xs,
+    },
+    typeChip: {
+      paddingVertical: spacing.sm,
+      paddingHorizontal: spacing.md,
+      borderRadius: radius.full,
+      backgroundColor: colors.card,
+    },
+    typeChipActive: { backgroundColor: colors.primary },
+    typeChipText: { ...typography.label, color: colors.textSecondary },
+    typeChipTextActive: { color: colors.textOnPrimary, fontWeight: "700" },
     searchBar: { padding: spacing.md },
     input: {
       backgroundColor: colors.card,
@@ -179,6 +263,7 @@ function createStyles(colors: Palette) {
       color: colors.text,
     },
     list: { padding: spacing.md, paddingTop: 0 },
+    footerSpinner: { marginVertical: spacing.md },
     empty: { ...typography.body, color: colors.textSecondary, textAlign: "center", marginTop: spacing.lg },
   });
 }
