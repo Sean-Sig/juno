@@ -25,6 +25,21 @@ const SPORT_META: Record<Sport, { label: string; emoji: string; description: str
     emoji: "🎾",
     description: "ATP & WTA rankings, live match scores & draw brackets",
   },
+  basketball: {
+    label: "Basketball",
+    emoji: "🏀",
+    description: "NBA, NCAAB & WNBA live scores, standings & schedules",
+  },
+  hockey: {
+    label: "Hockey",
+    emoji: "🏒",
+    description: "NHL live scores, standings & schedules",
+  },
+  football: {
+    label: "Football",
+    emoji: "🏈",
+    description: "NFL & NCAAF live scores, standings & schedules",
+  },
 };
 
 export default function OnboardingScreen() {

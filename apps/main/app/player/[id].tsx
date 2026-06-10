@@ -11,11 +11,11 @@ import {
 import { SafeAreaView } from "react-native-safe-area-context";
 import { useLocalSearchParams, useNavigation, useRouter } from "expo-router";
 import { Ionicons } from "@expo/vector-icons";
-import { golf, tennis, basketball, hockey, football, GolfPlayer, TennisPlayer, BasketballPlayer, HockeyPlayer, FootballPlayer, useAuth, useSport, type Sport } from "@juno/api";
+import { golf, tennis, basketball, hockey, GolfPlayer, TennisPlayer, BasketballPlayer, HockeyPlayer, useAuth, useSport, type Sport } from "@juno/api";
 import { useTheme, spacing, typography, radius, type Palette } from "@juno/ui";
-import { useFollowedPlayers } from "../../../context/FollowedPlayersContext";
+import { useFollowedPlayers } from "../../context/FollowedPlayersContext";
 
-type Player = GolfPlayer | TennisPlayer | BasketballPlayer | HockeyPlayer | FootballPlayer;
+type Player = GolfPlayer | TennisPlayer | BasketballPlayer | HockeyPlayer;
 
 function getDisplayName(player: Player) {
   return `${(player as GolfPlayer).display_first_name ?? player.first_name} ${(player as GolfPlayer).display_last_name ?? player.last_name}`;
@@ -37,13 +37,6 @@ function getRankStats(player: Player, sport: Sport) {
     ].filter(Boolean) as { label: string; value: string }[];
   } else if (sport === "hockey") {
     const p = player as HockeyPlayer;
-    return [
-      p.position != null && { label: "Position", value: p.position },
-      p.jersey_number != null && { label: "Jersey", value: `#${p.jersey_number}` },
-      p.league != null && { label: "League", value: p.league },
-    ].filter(Boolean) as { label: string; value: string }[];
-  } else if (sport === "football") {
-    const p = player as FootballPlayer;
     return [
       p.position != null && { label: "Position", value: p.position },
       p.jersey_number != null && { label: "Jersey", value: `#${p.jersey_number}` },
@@ -73,16 +66,19 @@ export default function PlayerScreen() {
   const [loading, setLoading] = useState(true);
   const [followLoading, setFollowLoading] = useState(false);
 
-  const api = activeSport === "golf" ? golf : activeSport === "tennis" ? tennis : activeSport === "hockey" ? hockey : activeSport === "football" ? football : basketball;
+  const api = activeSport === "golf" ? golf : activeSport === "tennis" ? tennis : activeSport === "hockey" ? hockey : basketball;
   const followed = id ? isFollowed(id) : false;
 
-  // Set header title + back button (overrides global sport switcher pill)
+  // Update header title + override back button to return to Rankings
   useEffect(() => {
     const title = player ? getDisplayName(player) : "Player";
     navigation.setOptions({
       title,
       headerLeft: () => (
-        <TouchableOpacity onPress={() => router.navigate("/(app)/rankings")} style={{ paddingRight: spacing.sm }}>
+        <TouchableOpacity
+          onPress={() => router.navigate("/(app)/rankings")}
+          style={{ paddingRight: spacing.sm }}
+        >
           <Ionicons name="chevron-back" size={26} color={colors.text} />
         </TouchableOpacity>
       ),

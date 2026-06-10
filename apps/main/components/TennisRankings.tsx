@@ -2,8 +2,9 @@ import React, { useEffect, useMemo, useState, useCallback } from "react";
 import { FlatList, View, Text, TextInput, ActivityIndicator, RefreshControl, StyleSheet, TouchableOpacity } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { useRouter } from "expo-router";
-import { tennis, TennisPlayer, useAuth } from "@juno/api";
+import { tennis, type TennisPlayer } from "@juno/api";
 import { PlayerCard, SkeletonCard, useTheme, spacing, radius, typography, type Palette } from "@juno/ui";
+import { useFollowedPlayers } from "../context/FollowedPlayersContext";
 
 type Gender = "male" | "female";
 
@@ -31,12 +32,11 @@ const PER_PAGE = 50;
 export default function RankingsScreen() {
   const { colors } = useTheme();
   const styles = useMemo(() => createStyles(colors), [colors]);
-  const { session } = useAuth();
+  const { followedIds, follow, unfollow, isFollowed } = useFollowedPlayers();
   const router = useRouter();
   const [rankingType, setRankingType] = useState(RANKING_TYPES[0]);
   const [gender, setGender] = useState<Gender>("male");
   const [players, setPlayers] = useState<TennisPlayer[]>([]);
-  const [followedIds, setFollowedIds] = useState<string[]>([]);
   const [query, setQuery] = useState("");
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
@@ -72,13 +72,6 @@ export default function RankingsScreen() {
       .finally(() => setLoadingMore(false));
   }
 
-  useEffect(() => {
-    if (!session) {
-      setFollowedIds([]);
-      return;
-    }
-    tennis.getFollowedPlayers(session.token).then(({ data }) => setFollowedIds(data)).catch(() => {});
-  }, [session]);
 
   // Debounced search — switches to search endpoint while query is active
   useEffect(() => {
@@ -98,17 +91,10 @@ export default function RankingsScreen() {
   }
 
   async function toggleFollow(playerId: string) {
-    if (!session) return;
-    const isFollowed = followedIds.includes(playerId);
-    setFollowedIds((ids) => (isFollowed ? ids.filter((id) => id !== playerId) : [...ids, playerId]));
-    try {
-      if (isFollowed) {
-        await tennis.unfollowPlayer(playerId, session.token);
-      } else {
-        await tennis.followPlayer(playerId, session.token);
-      }
-    } catch {
-      setFollowedIds((ids) => (isFollowed ? [...ids, playerId] : ids.filter((id) => id !== playerId)));
+    if (isFollowed(playerId)) {
+      await unfollow(playerId);
+    } else {
+      await follow(playerId);
     }
   }
 
@@ -129,7 +115,7 @@ export default function RankingsScreen() {
     : players;
 
   return (
-    <SafeAreaView style={styles.container} edges={["bottom", "left", "right"]}>
+    <SafeAreaView style={styles.container} edges={["left", "right"]}>
       {/* Men / Women toggle */}
       <View style={styles.genderRow}>
         {GENDERS.map((g) => (
@@ -198,9 +184,9 @@ export default function RankingsScreen() {
               photo={item.photo}
               rank={rankingType.rankOf(item)}
               rankLabel={rankingType.rankLabel}
-              following={session ? followedIds.includes(item.id) : undefined}
-              onToggleFollow={session ? () => toggleFollow(item.id) : undefined}
-              onPress={() => router.push(`/(app)/player/${item.id}`)}
+              following={isFollowed(item.id)}
+              onToggleFollow={() => toggleFollow(item.id)}
+              onPress={() => router.push(`/player/${item.id}`)}
             />
           )}
           ListEmptyComponent={<Text style={styles.empty}>No players found.</Text>}

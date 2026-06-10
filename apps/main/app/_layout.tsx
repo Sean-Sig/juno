@@ -2,9 +2,9 @@ import { Stack, useRouter, useSegments } from "expo-router";
 import { StatusBar } from "expo-status-bar";
 import { View, ActivityIndicator } from "react-native";
 import * as SplashScreen from "expo-splash-screen";
-import { useEffect } from "react";
+import React, { useEffect } from "react";
 import { AuthProvider, useAuth, SportProvider, useSport } from "@juno/api";
-import { ThemeProvider, useTheme } from "@juno/ui";
+import { ThemeProvider, useTheme, typography } from "@juno/ui";
 
 SplashScreen.preventAutoHideAsync();
 
@@ -17,17 +17,10 @@ SplashScreen.preventAutoHideAsync();
  */
 function RootNavigator() {
   const { session, isLoading: authLoading } = useAuth();
-  const { isOnboarded, isLoading: sportLoading, syncFromBackend } = useSport();
+  const { isOnboarded, isLoading: sportLoading } = useSport();
   const { colors, mode } = useTheme();
   const segments = useSegments();
   const router = useRouter();
-
-  // After login, pull latest sport prefs from backend in the background
-  useEffect(() => {
-    if (session?.token) {
-      syncFromBackend(session.token);
-    }
-  }, [session?.token]);
 
   useEffect(() => {
     if (authLoading || sportLoading) return;
@@ -61,10 +54,23 @@ function RootNavigator() {
     );
   }
 
+  const detailHeader = {
+    headerShown: true,
+    headerStyle: { backgroundColor: colors.surface },
+    headerTintColor: colors.text,
+    headerTitleStyle: { ...(typography.h3 as object) },
+    headerBackTitle: "",
+  } as const;
+
   return (
     <>
       <StatusBar style={mode === "dark" ? "light" : "dark"} />
-      <Stack screenOptions={{ headerShown: false }} />
+      <Stack screenOptions={{ headerShown: false }}>
+        <Stack.Screen name="player/[id]" options={{ ...detailHeader, title: "Player" }} />
+        <Stack.Screen name="game/[id]" options={{ ...detailHeader, title: "Game" }} />
+        <Stack.Screen name="tournament/[id]" options={{ headerShown: false }} />
+        <Stack.Screen name="match/[id]" options={{ headerShown: false }} />
+      </Stack>
     </>
   );
 }

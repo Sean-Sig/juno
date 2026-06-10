@@ -22,7 +22,7 @@ export const auth = {
     return authPost("/api/v4/auth/login", { email, password, account_id: accountId });
   },
 
-  async me(token: string): Promise<{ fan_id: string; account_id: string }> {
+  async me(token: string): Promise<Omit<AuthSession, "token">> {
     const res = await fetch(`${API_URL}/api/v4/auth/me`, {
       headers: {
         "Content-Type": "application/json",

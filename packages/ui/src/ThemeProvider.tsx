@@ -4,6 +4,9 @@ import * as SecureStore from "expo-secure-store";
 import {
   golfPalettes,
   tennisPalettes,
+  basketballPalettes,
+  hockeyPalettes,
+  footballPalettes,
   spacing,
   radius,
   typography,
@@ -11,7 +14,7 @@ import {
   type ThemeMode,
 } from "./theme";
 
-export type Sport = "golf" | "tennis";
+export type Sport = "golf" | "tennis" | "basketball" | "hockey" | "football";
 export type ThemePreference = ThemeMode | "system";
 
 type ThemeContextValue = {
@@ -30,6 +33,9 @@ const ThemeContext = createContext<ThemeContextValue | null>(null);
 const palettesBySport: Record<Sport, { light: Palette; dark: Palette }> = {
   golf: golfPalettes,
   tennis: tennisPalettes,
+  basketball: basketballPalettes,
+  hockey: hockeyPalettes,
+  football: footballPalettes,
 };
 
 // Single key — theme preference is global, not per-sport

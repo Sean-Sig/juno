@@ -16,6 +16,9 @@ import { useTheme, spacing, typography, radius, type Palette, type ThemePreferen
 const SPORT_META: Record<Sport, { emoji: string; label: string }> = {
   golf: { emoji: "⛳", label: "Golf" },
   tennis: { emoji: "🎾", label: "Tennis" },
+  basketball: { emoji: "🏀", label: "Basketball" },
+  hockey: { emoji: "🏒", label: "Hockey" },
+  football: { emoji: "🏈", label: "Football" },
 };
 
 export default function ProfileScreen() {
@@ -32,7 +35,7 @@ export default function ProfileScreen() {
   }
 
   return (
-    <SafeAreaView style={styles.container} edges={["bottom", "left", "right"]}>
+    <SafeAreaView style={styles.container} edges={["left", "right"]}>
       {!session ? (
         <View style={styles.center}>
           <Text style={styles.empty}>Sign in to manage your account.</Text>

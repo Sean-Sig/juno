@@ -44,7 +44,7 @@ export default function RegisterScreen() {
     setSubmitting(true);
     try {
       await register(email, password, ACCOUNT_ID);
-      router.replace("/follow-suggestions");
+      router.replace("/onboarding");
     } catch (err: unknown) {
       const e = err as { error?: string; errors?: Record<string, string[]> };
       if (e.errors) {

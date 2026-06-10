@@ -36,8 +36,10 @@ export function AuthProvider({
         return;
       }
       try {
-        await auth.me(s.token);
-        setSession(s);
+        // me() validates the token AND returns latest fan data (including sport prefs);
+        // merge into the stored session so SportProvider can read prefs without a second request.
+        const fresh = await auth.me(s.token);
+        setSession({ ...s, ...fresh });
       } catch {
         await clearSession(sessionKey);
         setSession(null);

@@ -1,13 +1,16 @@
-/**
- * Rankings tab — renders the golf or tennis rankings screen
- * based on the active sport in SportContext.
- */
 import React from "react";
 import { useSport } from "@juno/api";
 import GolfRankings from "../../components/GolfRankings";
 import TennisRankings from "../../components/TennisRankings";
+import BasketballStandings from "../../components/BasketballStandings";
+import HockeyStandings from "../../components/HockeyStandings";
+import FootballStandings from "../../components/FootballStandings";
 
 export default function RankingsScreen() {
   const { activeSport } = useSport();
-  return activeSport === "golf" ? <GolfRankings /> : <TennisRankings />;
+  if (activeSport === "golf") return <GolfRankings />;
+  if (activeSport === "tennis") return <TennisRankings />;
+  if (activeSport === "hockey") return <HockeyStandings />;
+  if (activeSport === "football") return <FootballStandings />;
+  return <BasketballStandings />;
 }

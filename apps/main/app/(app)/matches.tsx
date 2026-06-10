@@ -49,14 +49,14 @@ export default function MatchesScreen() {
 
   if (loading) {
     return (
-      <SafeAreaView style={styles.center} edges={["bottom", "left", "right"]}>
+      <SafeAreaView style={styles.center} edges={["left", "right"]}>
         <ActivityIndicator color={colors.primary} />
       </SafeAreaView>
     );
   }
 
   return (
-    <SafeAreaView style={styles.container} edges={["bottom", "left", "right"]}>
+    <SafeAreaView style={styles.container} edges={["left", "right"]}>
       <FlatList
         data={matches}
         keyExtractor={(m) => m.id}

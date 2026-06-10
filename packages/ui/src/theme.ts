@@ -92,6 +92,111 @@ export const tennisPalettes: SportPalettes = {
   },
 };
 
+export const basketballPalettes: SportPalettes = {
+  light: {
+    primary: "#C1440E",       // classic basketball orange-red
+    secondary: "#1A1A2E",
+    background: "#F9FAFB",
+    surface: "#FFFFFF",
+    card: "#FFFFFF",
+    text: "#111827",
+    textSecondary: "#6B7280",
+    textOnPrimary: "#FFFFFF",
+    textOnSecondary: "#FFFFFF",
+    border: "#E5E7EB",
+    divider: "rgba(17, 24, 39, 0.12)",
+    live: "#C1440E",
+    liveBackground: "#FEE2D5",
+    error: "#DC2626",
+  },
+  dark: {
+    primary: "#F97316",       // bright orange on dark
+    secondary: "#1E293B",
+    background: "#121212",
+    surface: "#121212",
+    card: "#1E1E1E",
+    text: "#FFFFFF",
+    textSecondary: "#B3B3B3",
+    textOnPrimary: "#FFFFFF",
+    textOnSecondary: "#FFFFFF",
+    border: "rgba(255, 255, 255, 0.12)",
+    divider: "rgba(255, 255, 255, 0.5)",
+    live: "#FB923C",
+    liveBackground: "rgba(249, 115, 22, 0.2)",
+    error: "#F87171",
+  },
+};
+
+export const hockeyPalettes: SportPalettes = {
+  light: {
+    primary: "#003F87",       // NHL blue
+    secondary: "#C8102E",     // NHL red
+    background: "#F9FAFB",
+    surface: "#FFFFFF",
+    card: "#FFFFFF",
+    text: "#111827",
+    textSecondary: "#6B7280",
+    textOnPrimary: "#FFFFFF",
+    textOnSecondary: "#FFFFFF",
+    border: "#E5E7EB",
+    divider: "rgba(17, 24, 39, 0.12)",
+    live: "#003F87",
+    liveBackground: "#DBEAFE",
+    error: "#DC2626",
+  },
+  dark: {
+    primary: "#60A5FA",       // bright blue on dark
+    secondary: "#F87171",
+    background: "#121212",
+    surface: "#121212",
+    card: "#1E1E1E",
+    text: "#FFFFFF",
+    textSecondary: "#B3B3B3",
+    textOnPrimary: "#FFFFFF",
+    textOnSecondary: "#FFFFFF",
+    border: "rgba(255, 255, 255, 0.12)",
+    divider: "rgba(255, 255, 255, 0.5)",
+    live: "#60A5FA",
+    liveBackground: "rgba(96, 165, 250, 0.2)",
+    error: "#F87171",
+  },
+};
+
+export const footballPalettes: SportPalettes = {
+  light: {
+    primary: "#013369",       // NFL shield blue
+    secondary: "#D50A0A",     // NFL shield red
+    background: "#F9FAFB",
+    surface: "#FFFFFF",
+    card: "#FFFFFF",
+    text: "#111827",
+    textSecondary: "#6B7280",
+    textOnPrimary: "#FFFFFF",
+    textOnSecondary: "#FFFFFF",
+    border: "#E5E7EB",
+    divider: "rgba(17, 24, 39, 0.12)",
+    live: "#013369",
+    liveBackground: "#DBEAFE",
+    error: "#DC2626",
+  },
+  dark: {
+    primary: "#60A5FA",       // bright blue on dark
+    secondary: "#F87171",     // bright red on dark
+    background: "#121212",
+    surface: "#121212",
+    card: "#1E1E1E",
+    text: "#FFFFFF",
+    textSecondary: "#B3B3B3",
+    textOnPrimary: "#FFFFFF",
+    textOnSecondary: "#FFFFFF",
+    border: "rgba(255, 255, 255, 0.12)",
+    divider: "rgba(255, 255, 255, 0.5)",
+    live: "#60A5FA",
+    liveBackground: "rgba(96, 165, 250, 0.2)",
+    error: "#F87171",
+  },
+};
+
 export const spacing = {
   xs: 4,
   sm: 8,
