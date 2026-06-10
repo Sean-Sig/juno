@@ -32,28 +32,28 @@ const palettesBySport: Record<Sport, { light: Palette; dark: Palette }> = {
   tennis: tennisPalettes,
 };
 
-function storageKey(sport: Sport): string {
-  return `juno_${sport}_theme_preference`;
-}
+// Single key — theme preference is global, not per-sport
+const THEME_STORAGE_KEY = "juno_theme_preference";
 
 export function ThemeProvider({ sport, children }: { sport: Sport; children: React.ReactNode }) {
   const systemScheme = useColorScheme();
   const [preference, setPreferenceState] = useState<ThemePreference>("system");
 
+  // Load once on mount — sport changes don't affect the stored preference
   useEffect(() => {
-    SecureStore.getItemAsync(storageKey(sport)).then((saved) => {
+    SecureStore.getItemAsync(THEME_STORAGE_KEY).then((saved) => {
       if (saved === "light" || saved === "dark" || saved === "system") {
         setPreferenceState(saved);
       }
     });
-  }, [sport]);
+  }, []);
 
   function setPreference(next: ThemePreference) {
     setPreferenceState(next);
     if (next === "system") {
-      SecureStore.deleteItemAsync(storageKey(sport)).catch(() => {});
+      SecureStore.deleteItemAsync(THEME_STORAGE_KEY).catch(() => {});
     } else {
-      SecureStore.setItemAsync(storageKey(sport), next).catch(() => {});
+      SecureStore.setItemAsync(THEME_STORAGE_KEY, next).catch(() => {});
     }
   }
 

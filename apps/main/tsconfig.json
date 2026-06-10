@@ -1,0 +1,7 @@
+{
+  "extends": "@juno/config/tsconfig.base.json",
+  "include": [
+    "**/*.ts",
+    "**/*.tsx"
+  ]
+}

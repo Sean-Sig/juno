@@ -6,6 +6,7 @@
     "packages/*"
   ],
   "scripts": {
+    "main": "turbo run start --filter=@juno/main",
     "golf": "turbo run start --filter=@juno/golf",
     "tennis": "turbo run start --filter=@juno/tennis",
     "build": "turbo run build",

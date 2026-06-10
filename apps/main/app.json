@@ -1,0 +1,32 @@
+{
+  "expo": {
+    "name": "Juno",
+    "slug": "juno-main",
+    "version": "1.0.0",
+    "scheme": "juno",
+    "orientation": "portrait",
+    "icon": "./assets/icon.png",
+    "ios": {
+      "supportsTablet": true,
+      "bundleIdentifier": "com.juno.app"
+    },
+    "android": {
+      "package": "com.juno.app",
+      "adaptiveIcon": {
+        "foregroundImage": "./assets/adaptive-icon.png",
+        "backgroundColor": "#006747"
+      }
+    },
+    "plugins": [
+      "expo-router",
+      [
+        "expo-splash-screen",
+        {
+          "image": "./assets/splash.png",
+          "resizeMode": "contain",
+          "backgroundColor": "#006747"
+        }
+      ]
+    ]
+  }
+}

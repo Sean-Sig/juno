@@ -9,27 +9,45 @@ type Props = {
   avatarUri?: string | null;
   avatarInitials?: string;
   onAvatarPress?: () => void;
+  /** Optional slot rendered on the left, replacing the avatar. Used for the sport context switcher. */
+  leftSlot?: React.ReactNode;
 };
 
-export function TopAppBar({ title, avatarUri, avatarInitials = "?", onAvatarPress }: Props) {
+export function TopAppBar({ title, avatarUri, avatarInitials = "?", onAvatarPress, leftSlot }: Props) {
   const { colors } = useTheme();
   const styles = useMemo(() => createStyles(colors), [colors]);
 
   return (
     <View style={styles.container}>
-      <TouchableOpacity
-        style={styles.avatar}
-        onPress={onAvatarPress}
-        disabled={!onAvatarPress}
-        activeOpacity={0.7}
-      >
-        {avatarUri ? (
-          <Image source={{ uri: avatarUri }} style={styles.avatarImage} />
-        ) : (
-          <Text style={styles.avatarInitials}>{avatarInitials}</Text>
-        )}
-      </TouchableOpacity>
+      {leftSlot ?? (
+        <TouchableOpacity
+          style={styles.avatar}
+          onPress={onAvatarPress}
+          disabled={!onAvatarPress}
+          activeOpacity={0.7}
+        >
+          {avatarUri ? (
+            <Image source={{ uri: avatarUri }} style={styles.avatarImage} />
+          ) : (
+            <Text style={styles.avatarInitials}>{avatarInitials}</Text>
+          )}
+        </TouchableOpacity>
+      )}
       <Text style={styles.title} numberOfLines={1}>{title}</Text>
+      {leftSlot && (
+        <TouchableOpacity
+          style={styles.avatar}
+          onPress={onAvatarPress}
+          disabled={!onAvatarPress}
+          activeOpacity={0.7}
+        >
+          {avatarUri ? (
+            <Image source={{ uri: avatarUri }} style={styles.avatarImage} />
+          ) : (
+            <Text style={styles.avatarInitials}>{avatarInitials}</Text>
+          )}
+        </TouchableOpacity>
+      )}
     </View>
   );
 }

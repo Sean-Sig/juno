@@ -2,6 +2,10 @@ export type AuthSession = {
   token: string;
   fan_id: string;
   account_id: string;
+  /** Sports the fan has chosen to follow — included in login/register/me responses */
+  followed_sports?: string[];
+  /** The fan's default sport */
+  default_sport?: string | null;
 };
 
 export type AuthResponse = AuthSession;
