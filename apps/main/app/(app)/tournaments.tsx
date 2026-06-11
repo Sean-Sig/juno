@@ -6,10 +6,11 @@ import {
   ActivityIndicator,
   RefreshControl,
   StyleSheet,
+  TouchableOpacity,
 } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
-import { TouchableOpacity } from "react-native";
-import { golf, GolfTournament, joinGolfChannel } from "@juno/api";
+import { useRouter } from "expo-router";
+import { golf, GolfTournament, GolfScore, GolfRoundDetail, joinGolfChannel } from "@juno/api";
 import { useTheme, spacing, radius, typography, type Palette } from "@juno/ui";
 
 const TEAM_ID = process.env.EXPO_PUBLIC_GOLF_TEAM_ID ?? "00000000-0000-0000-0000-000000000001";
@@ -22,6 +23,7 @@ export default function TournamentsScreen() {
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const channelRef = useRef<ReturnType<typeof joinGolfChannel> | null>(null);
+  const router = useRouter();
 
   const load = useCallback(() => {
     return golf.getTournaments(TEAM_ID).then(({ data }) => {
@@ -63,11 +65,14 @@ export default function TournamentsScreen() {
   const scores = useMemo(() => {
     const raw = selected?.events?.[0]?.scores ?? [];
     return [...raw].sort((a, b) => {
-      // Even par (E) players go last — they haven't started or are placeholder
-      const aEven = a.par === 0 ? 1 : 0;
-      const bEven = b.par === 0 ? 1 : 0;
-      if (aEven !== bEven) return aEven - bEven;
-      // Otherwise use the official sort_order from Enet
+      // Group priority: active players first, then missed cut, then DQ/WD
+      const group = (s: GolfScore) => s.dq || s.wd ? 2 : s.made_cut ? 0 : 1;
+      const ga = group(a);
+      const gb = group(b);
+      if (ga !== gb) return ga - gb;
+      // Within each group: sort by par numerically — negative → E (0) → positive
+      if (a.par !== b.par) return a.par - b.par;
+      // Tiebreaker: use Enet's official sort_order
       return (a.sort_order ?? 0) - (b.sort_order ?? 0);
     });
   }, [selected]);
@@ -142,23 +147,71 @@ export default function TournamentsScreen() {
           keyExtractor={(s) => s.id}
           refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor={colors.primary} />}
           renderItem={({ item }) => (
-            <View style={styles.row}>
-              <Text style={styles.place}>{item.display_place ?? "—"}</Text>
-              <View style={styles.playerInfo}>
-                <Text style={styles.playerName}>
-                  {item.player?.first_name} {item.player?.last_name}
-                </Text>
-                <Text style={styles.country}>{item.player?.country}</Text>
-              </View>
-              <Text style={[styles.score, item.par < 0 && styles.under]}>
-                {item.par === 0 ? "E" : item.par > 0 ? `+${item.par}` : item.par}
-              </Text>
-            </View>
+            <LeaderboardRow
+              score={item}
+              onPress={() => {
+                const firstName = item.player?.display_first_name ?? item.player?.first_name ?? "";
+                const lastName = item.player?.display_last_name ?? item.player?.last_name ?? "";
+                router.push({
+                  pathname: "/(app)/scorecard",
+                  params: {
+                    playerName: `${firstName} ${lastName}`.trim(),
+                    tournamentName: selected?.name ?? "",
+                    mostRecentRound: selected?.events?.[0]?.most_recently_scored_round ?? "",
+                    details: JSON.stringify(item.details ?? {}),
+                    totalPar: item.par,
+                    totalStrokes: item.strokes,
+                    displayPlace: item.display_place ?? "",
+                    courses: JSON.stringify(selected?.courses ?? []),
+                  },
+                });
+              }}
+            />
           )}
           ItemSeparatorComponent={() => <View style={styles.separator} />}
         />
       )}
     </SafeAreaView>
+  );
+}
+
+function LeaderboardRow({ score, onPress }: { score: GolfScore; onPress: () => void }) {
+  const { colors } = useTheme();
+  const styles = useMemo(() => createStyles(colors), [colors]);
+
+  // Show a status badge for non-standard outcomes
+  const badge = score.dq ? "DQ" : score.wd ? "WD" : !score.made_cut && score.par !== 0 ? "MC" : null;
+
+  // Only tappable if at least one round has stroke data
+  const hasRoundData = Object.values(score.details ?? {}).some(
+    (r) => (r as GolfRoundDetail)?.strokes != null && (r as GolfRoundDetail).strokes! > 0
+  );
+
+  return (
+    <TouchableOpacity
+      style={styles.row}
+      onPress={hasRoundData ? onPress : undefined}
+      activeOpacity={hasRoundData ? 0.7 : 1}
+    >
+      <Text style={styles.place}>{score.display_place ?? "—"}</Text>
+      <View style={styles.playerInfo}>
+        <Text style={styles.playerName}>
+          {score.player?.display_first_name ?? score.player?.first_name}{" "}
+          {score.player?.display_last_name ?? score.player?.last_name}
+        </Text>
+        <Text style={styles.country}>{score.player?.country}</Text>
+      </View>
+      <View style={styles.scoreRight}>
+        {badge ? (
+          <Text style={styles.badge}>{badge}</Text>
+        ) : hasRoundData ? (
+          <Text style={[styles.score, score.par < 0 && styles.under]}>
+            {score.par === 0 ? "E" : score.par > 0 ? `+${score.par}` : score.par}
+          </Text>
+        ) : null}
+        {hasRoundData && <Text style={styles.chevron}>›</Text>}
+      </View>
+    </TouchableOpacity>
   );
 }
 
@@ -215,8 +268,11 @@ function createStyles(colors: Palette) {
     playerInfo: { flex: 1 },
     playerName: { ...typography.body, color: colors.text, fontWeight: "600" },
     country: { ...typography.caption, color: colors.textSecondary },
+    scoreRight: { flexDirection: "row", alignItems: "center", gap: 4 },
     score: { ...typography.h3, color: colors.text },
-    under: { color: colors.live ?? "#ef4444" },
+    under: { color: colors.primary },
+    badge: { ...typography.caption, color: colors.textSecondary, fontWeight: "700" },
+    chevron: { ...typography.h2, color: colors.textSecondary, lineHeight: 24 },
     separator: { height: 1, backgroundColor: colors.border },
     empty: { ...typography.body, color: colors.textSecondary },
   });

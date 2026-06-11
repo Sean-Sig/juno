@@ -328,9 +328,9 @@ export default function AppLayout() {
       {/* Hidden from tab bar */}
       <Tabs.Screen name="profile" options={{ href: null }} />
       <Tabs.Screen name="player/[id]" options={{ href: null, title: "Player" }} />
-      <Tabs.Screen name="tournament/[id]" options={{ href: null }} />
       <Tabs.Screen name="match/[id]" options={{ href: null, title: "Match" }} />
       <Tabs.Screen name="game/[id]" options={{ href: null, title: "Game" }} />
+      <Tabs.Screen name="scorecard" options={{ href: null, title: "Scorecard" }} />
       <Tabs.Screen name="sport-settings" options={{ href: null, title: "Followed Sports" }} />
     </Tabs>
     </FollowedPlayersProvider>

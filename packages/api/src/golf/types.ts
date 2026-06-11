@@ -11,6 +11,25 @@ export type GolfPlayer = {
   tour: Record<string, string> | null;
 };
 
+/** Per-round detail block stored in GolfScore.details */
+export type GolfRoundDetail = {
+  strokes: number | null;
+  /** Hole number (1–18) → strokes taken on that hole */
+  scores: Record<string, number> | null;
+  /** Hole number (1–18) → par for that hole */
+  course_pars: Record<string, number> | null;
+  /** Hole number (1–18) → score relative to par */
+  to_pars: Record<string, number> | null;
+  /** Total score relative to par for this round */
+  par: number | null;
+  /** "F" = finished, "15" = through 15 holes, null = not started */
+  thru: string | null;
+  tee_time: string | null;
+  course_id: string;
+  mp_list: unknown[];
+  extra_mp_list: unknown[];
+};
+
 export type GolfScore = {
   id: string;
   player_id: string;
@@ -25,11 +44,45 @@ export type GolfScore = {
   dq: boolean;
   wd: boolean;
   is_playing: boolean;
-  hole_by_hole: Record<string, unknown> | null;
+  /** Boolean flag — true when hole-by-hole data is available in details */
+  hole_by_hole: boolean;
   mp_result: string | null;
   mp_score: string | null;
-  details: Record<string, unknown> | null;
+  /** Keys: "round_1" … "round_4". Each contains per-hole scores and pars. */
+  details: Record<string, GolfRoundDetail> | null;
   stats: Record<string, unknown> | null;
+};
+
+/** Score returned by GET /api/v4/golf/players/:id/scores — includes the event (round) it belongs to */
+export type GolfPlayerScore = {
+  id: string;
+  event_id: string;
+  player_id: string;
+  strokes: number;
+  par: number;
+  place: number | null;
+  display_place: string | null;
+  sort_order: number;
+  made_cut: boolean;
+  dq: boolean;
+  wd: boolean;
+  is_playing: boolean;
+  hole_by_hole: boolean;
+  mp_result: string | null;
+  mp_score: string | null;
+  stats: Record<string, unknown> | null;
+  details: Record<string, unknown> | null;
+  event: {
+    id: string;
+    name: string;
+    type: string;
+    game_type: string | null;
+    status: string;
+    live: boolean;
+    start_date: string | null;
+    number_of_rounds: number | null;
+    most_recently_scored_round: string | null;
+  } | null;
 };
 
 export type GolfEvent = {
@@ -75,6 +128,7 @@ export type GolfTournament = {
   projected_cut: number | null;
   start_date: string | null;
   end_date: string | null;
+  enet_tournament_stage_id: string | null;
   courses: GolfCourse[];
   events: GolfEvent[];
 };
@@ -103,4 +157,5 @@ export type GolfScheduleEntry = {
   winners_score: string | null;
   winners_name_loc_key: string | null;
   theme: Record<string, string> | null;
+  enet_stage_id: string | null;
 };

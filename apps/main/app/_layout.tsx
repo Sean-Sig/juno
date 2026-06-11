@@ -30,6 +30,8 @@ function RootNavigator() {
     const inAuth = segments[0] === "(auth)";
     const inOnboarding = segments[0] === "onboarding";
     const inApp = segments[0] === "(app)";
+    // Root-level detail screens pushed over the tab layout — don't redirect these
+    const inDetailScreen = ["tournament", "player", "game", "match"].includes(segments[0] as string);
 
     if (!session) {
       if (!inAuth) router.replace("/(auth)/login");
@@ -41,7 +43,7 @@ function RootNavigator() {
       return;
     }
 
-    if (!inApp) {
+    if (!inApp && !inDetailScreen) {
       router.replace("/(app)/");
     }
   }, [authLoading, sportLoading, session, isOnboarded, segments]);

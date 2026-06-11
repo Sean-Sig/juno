@@ -1,5 +1,5 @@
 import { apiFetch, buildQuery, type PageParams } from "../client";
-import type { GolfPlayer, GolfTournament, GolfScheduleEntry, PlayerSeasonRank } from "./types";
+import type { GolfPlayer, GolfTournament, GolfScheduleEntry, PlayerSeasonRank, GolfPlayerScore } from "./types";
 
 export const golf = {
   getPlayers(params?: { sort?: string } & PageParams) {
@@ -11,7 +11,7 @@ export const golf = {
   },
 
   getPlayerScores(id: string) {
-    return apiFetch<{ data: unknown[] }>(`/api/v4/golf/players/${id}/scores`);
+    return apiFetch<{ data: GolfPlayerScore[] }>(`/api/v4/golf/players/${id}/scores`);
   },
 
   getPlayerSeasonRanks(id: string, params?: PageParams) {
