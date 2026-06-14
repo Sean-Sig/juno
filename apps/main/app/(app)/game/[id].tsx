@@ -416,7 +416,7 @@ export default function GameScreen() {
         })()}
 
         {/* Team records — hide if both teams have no standing data */}
-        {(away || home) && (away?.wins || away?.losses || home?.wins || home?.losses) && (
+        {(away || home) && !!(away?.wins || away?.losses || home?.wins || home?.losses) && (
           <View style={styles.section}>
             <Text style={styles.sectionTitle}>Team Records</Text>
             {[away, home].map((team) =>
