@@ -1,0 +1,63 @@
+export type FootballTeam = {
+  id: string;
+  name: string;
+  short_name: string | null;
+  abbreviation: string | null;
+  logo: string | null;
+  league: string | null;
+  conference: string | null;
+  division: string | null;
+  wins: number;
+  losses: number;
+  ties: number | null;
+  wins_home: number | null;
+  losses_home: number | null;
+  wins_away: number | null;
+  losses_away: number | null;
+  points_for: number | null;
+  points_against: number | null;
+  standing_rank: number | null;
+  streak: string | null;
+};
+
+export type FootballPlayer = {
+  id: string;
+  first_name: string;
+  last_name: string;
+  display_first_name: string | null;
+  display_last_name: string | null;
+  country: string | null;
+  photo: string | null;
+  position: string | null;
+  jersey_number: string | null;
+  height: string | null;
+  weight: string | null;
+  league: string | null;
+  team_id: string | null;
+  enet_id: string | null;
+};
+
+export type FootballGame = {
+  id: string;
+  league: string | null;
+  status: "scheduled" | "live" | "finished";
+  status_detail: string | null;
+  period: number | null;
+  period_time: string | null;
+  scheduled_at: string | null;
+  home_score: number | null;
+  away_score: number | null;
+  home_score_q1: number | null;
+  home_score_q2: number | null;
+  home_score_q3: number | null;
+  home_score_q4: number | null;
+  away_score_q1: number | null;
+  away_score_q2: number | null;
+  away_score_q3: number | null;
+  away_score_q4: number | null;
+  home_score_ot: number | null;
+  away_score_ot: number | null;
+  home_team: FootballTeam | null;
+  away_team: FootballTeam | null;
+  enet_event_id: string | null;
+};
