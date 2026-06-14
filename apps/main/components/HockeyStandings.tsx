@@ -4,7 +4,6 @@ import {
   Text,
   ActivityIndicator,
   StyleSheet,
-  TouchableOpacity,
   RefreshControl,
   SectionList,
 } from "react-native";
@@ -12,9 +11,6 @@ import { SafeAreaView } from "react-native-safe-area-context";
 import { hockey, type HockeyTeam } from "@juno/api";
 import { useTheme, spacing, typography, radius, type Palette } from "@juno/ui";
 
-type LeagueTab = "NHL" | "AHL";
-
-const LEAGUE_TABS: LeagueTab[] = ["NHL", "AHL"];
 
 type Section = { title: string; data: HockeyTeam[] };
 
@@ -100,41 +96,27 @@ export default function HockeyStandings() {
   const { colors } = useTheme();
   const styles = useMemo(() => createStyles(colors), [colors]);
 
-  const [activeLeague, setActiveLeague] = useState<LeagueTab>("NHL");
   const [sections, setSections] = useState<Section[]>([]);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
 
-  const load = useCallback(async (league: LeagueTab) => {
-    const { data } = await hockey.getTeams({ league });
+  const load = useCallback(async () => {
+    const { data } = await hockey.getTeams({ league: "NHL" });
     setSections(groupByConference(data));
   }, []);
 
   useEffect(() => {
     setLoading(true);
-    load(activeLeague).finally(() => setLoading(false));
-  }, [activeLeague, load]);
+    load().finally(() => setLoading(false));
+  }, [load]);
 
   function onRefresh() {
     setRefreshing(true);
-    load(activeLeague).finally(() => setRefreshing(false));
+    load().finally(() => setRefreshing(false));
   }
 
   return (
     <SafeAreaView style={styles.container} edges={["left", "right"]}>
-      <View style={styles.tabBar}>
-        {LEAGUE_TABS.map((league) => (
-          <TouchableOpacity
-            key={league}
-            style={[styles.tabItem, activeLeague === league && styles.tabItemActive]}
-            onPress={() => setActiveLeague(league)}
-          >
-            <Text style={[styles.tabLabel, activeLeague === league && styles.tabLabelActive]}>
-              {league}
-            </Text>
-          </TouchableOpacity>
-        ))}
-      </View>
 
       {loading ? (
         <View style={styles.center}>
@@ -173,16 +155,6 @@ function createStyles(colors: Palette) {
   return StyleSheet.create({
     container: { flex: 1, backgroundColor: colors.background },
     center: { flex: 1, alignItems: "center", justifyContent: "center", padding: spacing.lg },
-    tabBar: {
-      flexDirection: "row",
-      backgroundColor: colors.surface,
-      borderBottomWidth: StyleSheet.hairlineWidth,
-      borderBottomColor: colors.divider,
-    },
-    tabItem: { flex: 1, paddingVertical: spacing.sm + 2, alignItems: "center" },
-    tabItemActive: { borderBottomWidth: 2, borderBottomColor: colors.primary },
-    tabLabel: { ...typography.label, color: colors.textSecondary },
-    tabLabelActive: { color: colors.primary, fontWeight: "700" },
     listContent: { paddingBottom: spacing.lg },
     emptyTitle: { ...typography.h3, color: colors.text, marginBottom: spacing.xs },
     emptyText: { ...typography.body, color: colors.textSecondary, textAlign: "center" },

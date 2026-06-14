@@ -10,7 +10,8 @@ import {
 import { SafeAreaView } from "react-native-safe-area-context";
 import { useLocalSearchParams, useNavigation, useRouter } from "expo-router";
 import { Ionicons } from "@expo/vector-icons";
-import { basketball, hockey, football, useSport, type BasketballGame, type HockeyGame, type FootballGame } from "@juno/api";
+import { basketball, hockey, football, joinBasketballGamesChannel, joinHockeyGamesChannel, useSport, type BasketballGame, type HockeyGame, type FootballGame } from "@juno/api";
+import { Channel } from "phoenix";
 import { useTheme, spacing, typography, radius, type Palette } from "@juno/ui";
 
 type Game = BasketballGame | HockeyGame | FootballGame;
@@ -61,6 +62,34 @@ export default function GameScreen() {
       .then(({ data }) => setGame(data as Game))
       .catch(() => {})
       .finally(() => setLoading(false));
+
+    if (activeSport === "hockey") {
+      const channel: Channel = joinHockeyGamesChannel({
+        onState: (games) => {
+          const match = games.find((g) => g.id === id);
+          if (match) setGame(match as Game);
+        },
+        onDelta: (games) => {
+          const match = games.find((g) => g.id === id);
+          if (match) setGame((prev) => (prev ? { ...prev, ...match } : (match as Game)));
+        },
+      });
+      return () => { channel.leave(); };
+    }
+
+    if (activeSport === "basketball") {
+      const channel = joinBasketballGamesChannel({
+        onState: (games) => {
+          const match = games.find((g) => g.id === id);
+          if (match) setGame(match as Game);
+        },
+        onDelta: (games) => {
+          const match = games.find((g) => g.id === id);
+          if (match) setGame((prev) => (prev ? { ...prev, ...match } : (match as Game)));
+        },
+      });
+      return () => { channel.leave(); };
+    }
   }, [id, activeSport]);
 
   // Set header title + back button once game loads
@@ -159,15 +188,21 @@ export default function GameScreen() {
             <Text style={styles.league}>{game.league.toUpperCase()}</Text>
           )}
           {isLive ? (
-            <View style={styles.liveChip}>
-              <View style={styles.liveDot} />
-              <Text style={styles.liveText}>
-                {periodLabel(game, activeSport)}
-                {game.period_time ? ` · ${game.period_time}` : ""}
-              </Text>
-            </View>
+            game.status_detail === "Halftime" ? (
+              <View style={styles.halftimeChip}>
+                <Text style={styles.halftimeText}>Halftime</Text>
+              </View>
+            ) : (
+              <View style={styles.liveChip}>
+                <View style={styles.liveDot} />
+                <Text style={styles.liveText}>
+                  {periodLabel(game, activeSport)}
+                  {game.period_time ? ` · ${game.period_time}` : ""}
+                </Text>
+              </View>
+            )
           ) : isFinished ? (
-            <Text style={styles.statusText}>Final</Text>
+            <Text style={styles.statusText}>{game.status_detail ?? "Final"}</Text>
           ) : (
             game.scheduled_at && (
               <Text style={styles.statusText}>
@@ -216,6 +251,45 @@ export default function GameScreen() {
           </View>
         </View>
 
+        {/* Timeouts — basketball only, live games only */}
+        {isLive && activeSport === "basketball" && (() => {
+          const g = game as BasketballGame;
+          const showTimeouts =
+            g.home_timeouts_remaining != null || g.away_timeouts_remaining != null;
+          if (!showTimeouts) return null;
+
+          const dot = (filled: boolean) => (
+            <View
+              key={Math.random()}
+              style={[styles.timeoutDot, filled ? styles.timeoutDotFull : styles.timeoutDotEmpty]}
+            />
+          );
+
+          const renderDots = (remaining: number | null) => {
+            const total = 7; // NBA: 7 full-game timeouts (2 mandatory + remaining)
+            const used = total - (remaining ?? total);
+            return Array.from({ length: total }, (_, i) => dot(i >= used));
+          };
+
+          return (
+            <View style={styles.timeoutRow}>
+              <View style={styles.timeoutTeam}>
+                <Text style={styles.timeoutLabel}>{away?.abbreviation ?? "AWY"}</Text>
+                <View style={styles.timeoutDots}>
+                  {renderDots(g.away_timeouts_remaining)}
+                </View>
+              </View>
+              <Text style={styles.timeoutTitle}>Timeouts</Text>
+              <View style={[styles.timeoutTeam, styles.timeoutTeamRight]}>
+                <View style={styles.timeoutDots}>
+                  {renderDots(g.home_timeouts_remaining)}
+                </View>
+                <Text style={styles.timeoutLabel}>{home?.abbreviation ?? "HME"}</Text>
+              </View>
+            </View>
+          );
+        })()}
+
         {/* Period breakdown */}
         {hasPeriods && (
           <View style={styles.section}>
@@ -252,8 +326,97 @@ export default function GameScreen() {
           </View>
         )}
 
-        {/* Team records */}
-        {(away || home) && (
+        {/* Series / venue info */}
+        {(() => {
+          if (isHockeyGame(game, activeSport)) {
+            const g = game as HockeyGame;
+            const hasInfo = g.series_round || g.series_game_num || g.venue_name;
+            if (!hasInfo) return null;
+            return (
+              <View style={styles.section}>
+                <Text style={styles.sectionTitle}>Game Info</Text>
+                <View style={styles.infoCard}>
+                  {(g.series_round || g.series_game_num) && (
+                    <View style={styles.infoRow}>
+                      <Text style={styles.infoLabel}>Series</Text>
+                      <Text style={styles.infoValue}>
+                        {[
+                          g.series_round,
+                          g.series_game_num != null && g.series_best_of != null
+                            ? `Game ${g.series_game_num} of ${g.series_best_of}`
+                            : g.series_game_num != null
+                            ? `Game ${g.series_game_num}`
+                            : null,
+                        ]
+                          .filter(Boolean)
+                          .join("  ·  ")}
+                      </Text>
+                    </View>
+                  )}
+                  {g.venue_name && (
+                    <View style={styles.infoRow}>
+                      <Text style={styles.infoLabel}>Venue</Text>
+                      <Text style={styles.infoValue}>
+                        {[g.venue_name, g.venue_city].filter(Boolean).join(", ")}
+                      </Text>
+                    </View>
+                  )}
+                  {g.venue_capacity != null && (
+                    <View style={styles.infoRow}>
+                      <Text style={styles.infoLabel}>Capacity</Text>
+                      <Text style={styles.infoValue}>{g.venue_capacity.toLocaleString()}</Text>
+                    </View>
+                  )}
+                </View>
+              </View>
+            );
+          }
+
+          if (isFootballGame(game, activeSport)) return null;
+
+          const g = game as BasketballGame;
+          const hasInfo = g.series_round || g.series_game_num || g.venue_name || g.attendance;
+          if (!hasInfo) return null;
+          return (
+            <View style={styles.section}>
+              <Text style={styles.sectionTitle}>Game Info</Text>
+              <View style={styles.infoCard}>
+                {(g.series_round || g.series_game_num) && (
+                  <View style={styles.infoRow}>
+                    <Text style={styles.infoLabel}>Series</Text>
+                    <Text style={styles.infoValue}>
+                      {[
+                        g.series_round,
+                        g.series_game_num != null && g.series_best_of != null
+                          ? `Game ${g.series_game_num} of ${g.series_best_of}`
+                          : g.series_game_num != null
+                          ? `Game ${g.series_game_num}`
+                          : null,
+                      ]
+                        .filter(Boolean)
+                        .join("  ·  ")}
+                    </Text>
+                  </View>
+                )}
+                {g.venue_name && (
+                  <View style={styles.infoRow}>
+                    <Text style={styles.infoLabel}>Venue</Text>
+                    <Text style={styles.infoValue}>{g.venue_name}</Text>
+                  </View>
+                )}
+                {g.attendance != null && (
+                  <View style={styles.infoRow}>
+                    <Text style={styles.infoLabel}>Attendance</Text>
+                    <Text style={styles.infoValue}>{g.attendance.toLocaleString()}</Text>
+                  </View>
+                )}
+              </View>
+            </View>
+          );
+        })()}
+
+        {/* Team records — hide if both teams have no standing data */}
+        {(away || home) && (away?.wins || away?.losses || home?.wins || home?.losses) && (
           <View style={styles.section}>
             <Text style={styles.sectionTitle}>Team Records</Text>
             {[away, home].map((team) =>
@@ -312,6 +475,13 @@ function createStyles(colors: Palette) {
     },
     liveDot: { width: 6, height: 6, borderRadius: radius.full, backgroundColor: "#ef4444" },
     liveText: { ...typography.caption, color: "#ef4444", fontWeight: "700" },
+    halftimeChip: {
+      backgroundColor: "#fff7ed",
+      borderRadius: radius.full,
+      paddingHorizontal: spacing.sm,
+      paddingVertical: 3,
+    },
+    halftimeText: { ...typography.caption, color: "#f97316", fontWeight: "700" },
     statusText: { ...typography.caption, color: colors.textSecondary },
     scoreboard: {
       flexDirection: "row",
@@ -362,5 +532,46 @@ function createStyles(colors: Palette) {
     },
     recordTeam: { ...typography.body, color: colors.text, fontWeight: "600" },
     recordWL: { ...typography.label, color: colors.textSecondary },
+    infoCard: {
+      backgroundColor: colors.card,
+      borderRadius: radius.md,
+      overflow: "hidden",
+    },
+    infoRow: {
+      flexDirection: "row",
+      alignItems: "center",
+      justifyContent: "space-between",
+      paddingVertical: spacing.sm,
+      paddingHorizontal: spacing.md,
+      borderBottomWidth: StyleSheet.hairlineWidth,
+      borderBottomColor: colors.border,
+    },
+    infoLabel: { ...typography.label, color: colors.textSecondary, fontWeight: "600" },
+    infoValue: { ...typography.label, color: colors.text, flex: 1, textAlign: "right" },
+    timeoutRow: {
+      flexDirection: "row",
+      alignItems: "center",
+      justifyContent: "space-between",
+      backgroundColor: colors.card,
+      borderRadius: radius.md,
+      paddingVertical: spacing.sm,
+      paddingHorizontal: spacing.md,
+      marginBottom: spacing.md,
+    },
+    timeoutTeam: { flexDirection: "row", alignItems: "center", gap: 6, flex: 1 },
+    timeoutTeamRight: { justifyContent: "flex-end" },
+    timeoutLabel: { ...typography.label, color: colors.text, fontWeight: "700", minWidth: 32 },
+    timeoutTitle: {
+      ...typography.caption,
+      color: colors.textSecondary,
+      fontWeight: "600",
+      textTransform: "uppercase",
+      letterSpacing: 0.4,
+      textAlign: "center",
+    },
+    timeoutDots: { flexDirection: "row", gap: 3 },
+    timeoutDot: { width: 8, height: 8, borderRadius: 4 },
+    timeoutDotFull: { backgroundColor: colors.primary },
+    timeoutDotEmpty: { backgroundColor: colors.border },
   });
 }

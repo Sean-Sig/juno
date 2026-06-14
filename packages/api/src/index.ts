@@ -11,6 +11,8 @@ export { SportProvider, useSport, ALL_SPORTS } from "./sport/context";
 export { saveSession, loadSession, clearSession } from "./auth/storage";
 export { joinGolfChannel } from "./golf/channel";
 export { joinTennisMatchChannel } from "./tennis/channel";
+export { joinBasketballGamesChannel } from "./basketball/channel";
+export { joinHockeyGamesChannel } from "./hockey/channel";
 export { getSocket, disconnectSocket } from "./socket/socket";
 export { setUnauthorizedHandler } from "./client";
 

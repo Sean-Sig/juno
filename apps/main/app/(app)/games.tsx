@@ -10,14 +10,13 @@ import {
 } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { useRouter } from "expo-router";
-import { basketball, hockey, football, useSport, type BasketballGame, type HockeyGame, type FootballGame } from "@juno/api";
+import { basketball, hockey, football, useSport, joinBasketballGamesChannel, type BasketballGame, type HockeyGame, type FootballGame } from "@juno/api";
 import { useTheme, spacing, typography, radius, type Palette } from "@juno/ui";
 
-type FilterTab = "live" | "today" | "upcoming" | "final";
+type FilterTab = "live" | "upcoming" | "final";
 
 const TABS: { key: FilterTab; label: string }[] = [
   { key: "live", label: "Live" },
-  { key: "today", label: "Today" },
   { key: "upcoming", label: "Upcoming" },
   { key: "final", label: "Final" },
 ];
@@ -247,23 +246,61 @@ function BasketballGamesView() {
   const styles = useMemo(() => createStyles(colors), [colors]);
   const router = useRouter();
 
-  const [tab, setTab] = useState<FilterTab>("today");
+  const [tab, setTab] = useState<FilterTab>("live");
   const [games, setGames] = useState<BasketballGame[]>([]);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
 
+  // Live tab: subscribe to WebSocket channel for real-time score updates.
+  // On join the server immediately pushes `basketball_state` (full snapshot),
+  // then pushes `basketball_delta` (changed games only) on each import cycle.
+  useEffect(() => {
+    if (tab !== "live") return;
+    setLoading(true);
+
+    const channel = joinBasketballGamesChannel({
+      onState: (incoming) => {
+        setGames(incoming);
+        setLoading(false);
+      },
+      onDelta: (changed) => {
+        setGames((prev) => {
+          const map = new Map(prev.map((g) => [g.id, g]));
+          changed.forEach((g) => map.set(g.id, g));
+          return Array.from(map.values());
+        });
+      },
+    });
+
+    return () => {
+      channel.leave();
+    };
+  }, [tab]);
+
+  // Upcoming / Final tabs: REST API (no live data needed).
   const load = useCallback(async (filter: FilterTab) => {
     const params: Parameters<typeof basketball.getGames>[0] = {};
-    if (filter === "live") params.status = "live";
-    else if (filter === "today") params.date = todayStr();
-    else if (filter === "upcoming") { params.date = tomorrowStr(); params.status = "scheduled"; }
-    else { params.date = todayStr(); params.status = "finished"; }
+    if (filter === "upcoming") params.status = "scheduled";
+    else params.status = "finished";
     const { data } = await basketball.getGames(params);
-    setGames(data);
+    if (filter === "final") {
+      setGames([...data].sort((a, b) => (b.scheduled_at ?? "").localeCompare(a.scheduled_at ?? "")));
+    } else {
+      setGames(data);
+    }
   }, []);
 
-  useEffect(() => { setLoading(true); load(tab).finally(() => setLoading(false)); }, [tab, load]);
-  function onRefresh() { setRefreshing(true); load(tab).finally(() => setRefreshing(false)); }
+  useEffect(() => {
+    if (tab === "live") return; // handled by channel above
+    setLoading(true);
+    load(tab).finally(() => setLoading(false));
+  }, [tab, load]);
+
+  function onRefresh() {
+    if (tab === "live") return; // socket pushes updates automatically
+    setRefreshing(true);
+    load(tab).finally(() => setRefreshing(false));
+  }
 
   return (
     <GamesListView
@@ -291,19 +328,22 @@ function HockeyGamesView() {
   const styles = useMemo(() => createStyles(colors), [colors]);
   const router = useRouter();
 
-  const [tab, setTab] = useState<FilterTab>("today");
+  const [tab, setTab] = useState<FilterTab>("live");
   const [games, setGames] = useState<HockeyGame[]>([]);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
 
   const load = useCallback(async (filter: FilterTab) => {
-    const params: Parameters<typeof hockey.getGames>[0] = {};
-    if (filter === "live") params.status = "live";
-    else if (filter === "today") params.date = todayStr();
-    else if (filter === "upcoming") { params.date = tomorrowStr(); params.status = "scheduled"; }
-    else { params.date = todayStr(); params.status = "finished"; }
-    const { data } = await hockey.getGames(params);
-    setGames(data);
+    if (filter === "live") {
+      const { data } = await hockey.getGames({ status: "live", league: "NHL" });
+      setGames(data);
+    } else if (filter === "upcoming") {
+      const { data } = await hockey.getGames({ status: "scheduled", league: "NHL" });
+      setGames([...data].sort((a, b) => (a.scheduled_at ?? "").localeCompare(b.scheduled_at ?? "")));
+    } else {
+      const { data } = await hockey.getGames({ status: "finished", league: "NHL" });
+      setGames([...data].sort((a, b) => (b.scheduled_at ?? "").localeCompare(a.scheduled_at ?? "")));
+    }
   }, []);
 
   useEffect(() => { setLoading(true); load(tab).finally(() => setLoading(false)); }, [tab, load]);
@@ -373,7 +413,7 @@ function FootballGameCard({ game, onPress }: { game: FootballGame; onPress: () =
 function FootballGamesView() {
   const router = useRouter();
 
-  const [tab, setTab] = useState<FilterTab>("today");
+  const [tab, setTab] = useState<FilterTab>("live");
   const [games, setGames] = useState<FootballGame[]>([]);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
@@ -381,7 +421,6 @@ function FootballGamesView() {
   const load = useCallback(async (filter: FilterTab) => {
     const params: Parameters<typeof football.getGames>[0] = {};
     if (filter === "live") params.status = "live";
-    else if (filter === "today") params.date = todayStr();
     else if (filter === "upcoming") { params.date = tomorrowStr(); params.status = "scheduled"; }
     else { params.date = todayStr(); params.status = "finished"; }
     const { data } = await football.getGames(params);
@@ -420,6 +459,7 @@ function GamesListView<T extends { id: string }>({
   onRefresh,
   games,
   renderGame,
+  leagueSwitcher,
 }: {
   tab: FilterTab;
   onTabChange: (t: FilterTab) => void;
@@ -428,12 +468,14 @@ function GamesListView<T extends { id: string }>({
   onRefresh: () => void;
   games: T[];
   renderGame: (item: T) => React.ReactElement;
+  leagueSwitcher?: React.ReactNode;
 }) {
   const { colors } = useTheme();
   const styles = useMemo(() => createStyles(colors), [colors]);
 
   return (
     <SafeAreaView style={styles.container} edges={["left", "right"]}>
+      {leagueSwitcher}
       <View style={styles.tabBar}>
         {TABS.map((t) => (
           <TouchableOpacity
@@ -467,11 +509,9 @@ function GamesListView<T extends { id: string }>({
               <Text style={styles.emptyText}>
                 {tab === "live"
                   ? "No games are live right now."
-                  : tab === "today"
-                  ? "No games scheduled for today."
                   : tab === "upcoming"
                   ? "No upcoming games found."
-                  : "No finished games today."}
+                  : "No finished games found."}
               </Text>
             </View>
           }

@@ -28,7 +28,7 @@ const SPORT_META: Record<Sport, { label: string; emoji: string; description: str
   basketball: {
     label: "Basketball",
     emoji: "🏀",
-    description: "NBA, NCAAB & WNBA live scores, standings & schedules",
+    description: "NBA live scores, standings & schedules",
   },
   hockey: {
     label: "Hockey",
@@ -38,7 +38,7 @@ const SPORT_META: Record<Sport, { label: string; emoji: string; description: str
   football: {
     label: "Football",
     emoji: "🏈",
-    description: "NFL & NCAAF live scores, standings & schedules",
+    description: "NFL live scores, standings & schedules",
   },
 };
 
