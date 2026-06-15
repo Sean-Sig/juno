@@ -59,8 +59,8 @@ export const golfPalettes: SportPalettes = {
 
 export const tennisPalettes: SportPalettes = {
   light: {
-    primary: "#1565C0",
-    secondary: "#F59E0B",
+    primary: "#689F38",       // deep lime — tennis ball
+    secondary: "#F9A825",
     background: "#F9FAFB",
     surface: "#FFFFFF",
     card: "#FFFFFF",
@@ -70,24 +70,24 @@ export const tennisPalettes: SportPalettes = {
     textOnSecondary: "#000000",
     border: "#E5E7EB",
     divider: "rgba(17, 24, 39, 0.12)",
-    live: "#16A34A",
-    liveBackground: "#DCFCE7",
+    live: "#558B2F",
+    liveBackground: "#F1F8E9",
     error: "#DC2626",
   },
   dark: {
-    primary: "#3B82F6",
+    primary: "#C6D930",       // bright chartreuse on dark
     secondary: "#FFB300",
     background: "#121212",
     surface: "#121212",
     card: "#1E1E1E",
     text: "#FFFFFF",
     textSecondary: "#B3B3B3",
-    textOnPrimary: "#FFFFFF",
+    textOnPrimary: "#1A1A1A",  // dark text on bright lime for contrast
     textOnSecondary: "#000000",
     border: "rgba(255, 255, 255, 0.12)",
     divider: "rgba(255, 255, 255, 0.5)",
-    live: "#4ADE80",
-    liveBackground: "rgba(22, 163, 74, 0.2)",
+    live: "#C6D930",
+    liveBackground: "rgba(198, 217, 48, 0.2)",
     error: "#F87171",
   },
 };
@@ -145,7 +145,7 @@ export const hockeyPalettes: SportPalettes = {
     error: "#DC2626",
   },
   dark: {
-    primary: "#60A5FA",       // bright blue on dark
+    primary: "#38BDF8",       // icy blue on dark — reflects the rink
     secondary: "#F87171",
     background: "#121212",
     surface: "#121212",
@@ -156,16 +156,16 @@ export const hockeyPalettes: SportPalettes = {
     textOnSecondary: "#FFFFFF",
     border: "rgba(255, 255, 255, 0.12)",
     divider: "rgba(255, 255, 255, 0.5)",
-    live: "#60A5FA",
-    liveBackground: "rgba(96, 165, 250, 0.2)",
+    live: "#38BDF8",
+    liveBackground: "rgba(56, 189, 248, 0.2)",
     error: "#F87171",
   },
 };
 
 export const footballPalettes: SportPalettes = {
   light: {
-    primary: "#013369",       // NFL shield blue
-    secondary: "#D50A0A",     // NFL shield red
+    primary: "#B71C1C",       // deep crimson — end zones, intensity
+    secondary: "#1A237E",     // dark navy accent
     background: "#F9FAFB",
     surface: "#FFFFFF",
     card: "#FFFFFF",
@@ -175,13 +175,13 @@ export const footballPalettes: SportPalettes = {
     textOnSecondary: "#FFFFFF",
     border: "#E5E7EB",
     divider: "rgba(17, 24, 39, 0.12)",
-    live: "#013369",
-    liveBackground: "#DBEAFE",
+    live: "#B71C1C",
+    liveBackground: "#FFEBEE",
     error: "#DC2626",
   },
   dark: {
-    primary: "#60A5FA",       // bright blue on dark
-    secondary: "#F87171",     // bright red on dark
+    primary: "#EF5350",       // bright crimson on dark
+    secondary: "#5C6BC0",
     background: "#121212",
     surface: "#121212",
     card: "#1E1E1E",
@@ -191,8 +191,8 @@ export const footballPalettes: SportPalettes = {
     textOnSecondary: "#FFFFFF",
     border: "rgba(255, 255, 255, 0.12)",
     divider: "rgba(255, 255, 255, 0.5)",
-    live: "#60A5FA",
-    liveBackground: "rgba(96, 165, 250, 0.2)",
+    live: "#EF5350",
+    liveBackground: "rgba(239, 83, 80, 0.2)",
     error: "#F87171",
   },
 };

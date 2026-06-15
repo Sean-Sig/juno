@@ -6,13 +6,39 @@ import {
   StyleSheet,
   RefreshControl,
   SectionList,
+  FlatList,
+  TextInput,
+  TouchableOpacity,
+  ScrollView,
 } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
-import { basketball, type BasketballTeam } from "@juno/api";
-import { useTheme, spacing, typography, radius, type Palette } from "@juno/ui";
+import { useRouter } from "expo-router";
+import { basketball, type BasketballTeam, type BasketballPlayer } from "@juno/api";
+import { PlayerCard, SkeletonCard, useTheme, spacing, typography, radius, type Palette } from "@juno/ui";
+import { useFollowedPlayers } from "../context/FollowedPlayersContext";
 
+// ---------------------------------------------------------------------------
+// Types
+// ---------------------------------------------------------------------------
 
+type ViewMode = "teams" | "players";
 type Section = { title: string; data: BasketballTeam[] };
+type PositionFilter = "all" | "PG" | "SG" | "SF" | "PF" | "C";
+
+const POSITIONS: { key: PositionFilter; label: string }[] = [
+  { key: "all", label: "All" },
+  { key: "PG", label: "PG" },
+  { key: "SG", label: "SG" },
+  { key: "SF", label: "SF" },
+  { key: "PF", label: "PF" },
+  { key: "C", label: "C" },
+];
+
+const PER_PAGE = 50;
+
+// ---------------------------------------------------------------------------
+// Teams view helpers
+// ---------------------------------------------------------------------------
 
 function groupByConference(teams: BasketballTeam[]): Section[] {
   const map = new Map<string, BasketballTeam[]>();
@@ -21,7 +47,6 @@ function groupByConference(teams: BasketballTeam[]): Section[] {
     if (!map.has(key)) map.set(key, []);
     map.get(key)!.push(t);
   }
-  // Sort each conference by standing_rank, then wins
   const sections: Section[] = [];
   for (const [title, data] of map.entries()) {
     sections.push({
@@ -34,7 +59,6 @@ function groupByConference(teams: BasketballTeam[]): Section[] {
       }),
     });
   }
-  // Eastern before Western
   sections.sort((a, b) => {
     const order = ["Eastern", "Western", "East", "West"];
     const ai = order.findIndex((o) => a.title.includes(o));
@@ -100,10 +124,12 @@ function TableHeader() {
   );
 }
 
-export default function BasketballStandings() {
-  const { colors } = useTheme();
-  const styles = useMemo(() => createStyles(colors), [colors]);
+// ---------------------------------------------------------------------------
+// Teams view
+// ---------------------------------------------------------------------------
 
+function TeamsView({ colors }: { colors: Palette }) {
+  const styles = useMemo(() => createStyles(colors), [colors]);
   const [sections, setSections] = useState<Section[]>([]);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
@@ -123,59 +149,259 @@ export default function BasketballStandings() {
     load().finally(() => setRefreshing(false));
   }
 
+  if (loading) {
+    return (
+      <View style={styles.center}>
+        <ActivityIndicator color={colors.primary} />
+      </View>
+    );
+  }
+
+  if (sections.length === 0) {
+    return (
+      <View style={styles.center}>
+        <Text style={styles.emptyTitle}>No standings yet</Text>
+        <Text style={styles.emptyText}>Standings will appear once the season is underway.</Text>
+      </View>
+    );
+  }
+
   return (
-    <SafeAreaView style={styles.container} edges={["left", "right"]}>
+    <SectionList
+      sections={sections}
+      keyExtractor={(t) => t.id}
+      contentContainerStyle={styles.listContent}
+      refreshControl={
+        <RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor={colors.primary} />
+      }
+      stickySectionHeadersEnabled
+      ListHeaderComponent={<TableHeader />}
+      renderSectionHeader={({ section }) => (
+        <View style={styles.sectionHeader}>
+          <Text style={styles.sectionTitle}>{section.title} Conference</Text>
+        </View>
+      )}
+      renderItem={({ item, index }) => <TeamRow team={item} rank={index + 1} />}
+    />
+  );
+}
+
+// ---------------------------------------------------------------------------
+// Players view
+// ---------------------------------------------------------------------------
+
+function PlayersView({ colors }: { colors: Palette }) {
+  const styles = useMemo(() => createStyles(colors), [colors]);
+  const router = useRouter();
+  const { isFollowed, follow, unfollow } = useFollowedPlayers();
+
+  const [players, setPlayers] = useState<BasketballPlayer[]>([]);
+  const [query, setQuery] = useState("");
+  const [position, setPosition] = useState<PositionFilter>("all");
+  const [loading, setLoading] = useState(true);
+  const [refreshing, setRefreshing] = useState(false);
+  const [loadingMore, setLoadingMore] = useState(false);
+  const [hasMore, setHasMore] = useState(true);
+
+  const load = useCallback((searchQuery?: string) => {
+    setHasMore(true);
+    return basketball
+      .getPlayers({ league: "NBA", q: searchQuery || undefined, page: 1, per_page: PER_PAGE })
+      .then(({ data }) => {
+        setPlayers(data);
+        setHasMore(data.length === PER_PAGE);
+      });
+  }, []);
+
+  useEffect(() => {
+    setLoading(true);
+    load().finally(() => setLoading(false));
+  }, [load]);
+
+  // Debounced search
+  useEffect(() => {
+    if (!query.trim()) {
+      load();
+      return;
+    }
+    const timer = setTimeout(() => {
+      setLoading(true);
+      load(query.trim()).finally(() => setLoading(false));
+    }, 300);
+    return () => clearTimeout(timer);
+  }, [query]);
+
+  function onRefresh() {
+    setRefreshing(true);
+    load(query.trim() || undefined).finally(() => setRefreshing(false));
+  }
+
+  function loadMore() {
+    if (loadingMore || !hasMore || loading || query.trim()) return;
+    setLoadingMore(true);
+    const nextPage = Math.floor(players.length / PER_PAGE) + 1;
+    basketball
+      .getPlayers({ league: "NBA", page: nextPage, per_page: PER_PAGE })
+      .then(({ data }) => {
+        setPlayers((prev) => [...prev, ...data]);
+        setHasMore(data.length === PER_PAGE);
+      })
+      .finally(() => setLoadingMore(false));
+  }
+
+  async function toggleFollow(playerId: string) {
+    if (isFollowed(playerId)) await unfollow(playerId);
+    else await follow(playerId);
+  }
+
+  const displayed = useMemo(() => {
+    if (position === "all") return players;
+    return players.filter((p) => {
+      const pos = (p.position ?? "").toUpperCase();
+      return pos === position || pos.startsWith(position + "-") || pos.endsWith("-" + position);
+    });
+  }, [players, position]);
+
+  return (
+    <View style={{ flex: 1 }}>
+      {/* Search bar */}
+      <View style={styles.searchBar}>
+        <TextInput
+          style={styles.input}
+          placeholder="Search players…"
+          value={query}
+          onChangeText={setQuery}
+          placeholderTextColor={colors.textSecondary}
+          returnKeyType="search"
+        />
+      </View>
+
+      {/* Position filter chips */}
+      <ScrollView
+        horizontal
+        showsHorizontalScrollIndicator={false}
+        style={styles.typePicker}
+        contentContainerStyle={styles.typePickerContent}
+      >
+        {POSITIONS.map((pos) => (
+          <TouchableOpacity
+            key={pos.key}
+            style={[styles.typeChip, position === pos.key && styles.typeChipActive]}
+            onPress={() => setPosition(pos.key)}
+            activeOpacity={0.7}
+          >
+            <Text style={[styles.typeChipText, position === pos.key && styles.typeChipTextActive]}>
+              {pos.label}
+            </Text>
+          </TouchableOpacity>
+        ))}
+      </ScrollView>
 
       {loading ? (
-        <View style={styles.center}>
-          <ActivityIndicator color={colors.primary} />
-        </View>
-      ) : sections.length === 0 ? (
-        <View style={styles.center}>
-          <Text style={styles.emptyTitle}>No standings yet</Text>
-          <Text style={styles.emptyText}>
-            Standings will appear once the season is underway.
-          </Text>
+        <View style={styles.playerList}>
+          <SkeletonCard />
+          <SkeletonCard />
+          <SkeletonCard />
         </View>
       ) : (
-        <SectionList
-          sections={sections}
-          keyExtractor={(t) => t.id}
-          contentContainerStyle={styles.listContent}
+        <FlatList
+          data={displayed}
+          keyExtractor={(p) => p.id}
+          contentContainerStyle={styles.playerList}
           refreshControl={
-            <RefreshControl
-              refreshing={refreshing}
-              onRefresh={onRefresh}
-              tintColor={colors.primary}
-            />
+            <RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor={colors.primary} />
           }
-          stickySectionHeadersEnabled
-          ListHeaderComponent={<TableHeader />}
-          renderSectionHeader={({ section }) => (
-            <View style={styles.sectionHeader}>
-              <Text style={styles.sectionTitle}>{section.title} Conference</Text>
-            </View>
+          onEndReached={query.trim() ? undefined : loadMore}
+          onEndReachedThreshold={0.4}
+          ListFooterComponent={
+            loadingMore ? <ActivityIndicator color={colors.primary} style={styles.footerSpinner} /> : null
+          }
+          renderItem={({ item }) => (
+            <PlayerCard
+              firstName={item.display_first_name ?? item.first_name}
+              lastName={item.display_last_name ?? item.last_name}
+              country={[item.position, item.country].filter(Boolean).join(" · ") || null}
+              photo={item.photo}
+              rank={item.jersey_number != null ? parseInt(item.jersey_number, 10) || null : null}
+              rankLabel="No."
+              following={isFollowed(item.id)}
+              onToggleFollow={() => toggleFollow(item.id)}
+              onPress={() => router.push(`/(app)/player/${item.id}`)}
+            />
           )}
-          renderItem={({ item, index }) => (
-            <TeamRow team={item} rank={index + 1} />
-          )}
+          ListEmptyComponent={<Text style={styles.empty}>No players found.</Text>}
         />
+      )}
+    </View>
+  );
+}
+
+// ---------------------------------------------------------------------------
+// Root export
+// ---------------------------------------------------------------------------
+
+export default function BasketballStandings() {
+  const { colors } = useTheme();
+  const styles = useMemo(() => createStyles(colors), [colors]);
+  const [view, setView] = useState<ViewMode>("players");
+
+  return (
+    <SafeAreaView style={styles.container} edges={["left", "right"]}>
+      {/* Players / Rankings toggle */}
+      <View style={styles.tabBar}>
+        {(["players", "teams"] as ViewMode[]).map((v) => (
+          <TouchableOpacity
+            key={v}
+            style={[styles.tabItem, view === v && styles.tabItemActive]}
+            onPress={() => setView(v)}
+            activeOpacity={0.7}
+          >
+            <Text style={[styles.tabLabel, view === v && styles.tabLabelActive]}>
+              {v === "players" ? "Players" : "Rankings"}
+            </Text>
+          </TouchableOpacity>
+        ))}
+      </View>
+
+      {view === "teams" ? (
+        <TeamsView colors={colors} />
+      ) : (
+        <PlayersView colors={colors} />
       )}
     </SafeAreaView>
   );
 }
 
+// ---------------------------------------------------------------------------
+// Styles
+// ---------------------------------------------------------------------------
+
 function createStyles(colors: Palette) {
   return StyleSheet.create({
     container: { flex: 1, backgroundColor: colors.background },
     center: { flex: 1, alignItems: "center", justifyContent: "center", padding: spacing.lg },
+
+    // Toggle tab bar
+    tabBar: {
+      flexDirection: "row",
+      backgroundColor: colors.surface,
+      borderBottomWidth: StyleSheet.hairlineWidth,
+      borderBottomColor: colors.divider,
+    },
+    tabItem: {
+      flex: 1,
+      alignItems: "center",
+      justifyContent: "center",
+      paddingVertical: spacing.sm + 2,
+    },
+    tabItemActive: { borderBottomWidth: 2, borderBottomColor: colors.primary },
+    tabLabel: { ...typography.label, color: colors.textSecondary },
+    tabLabelActive: { color: colors.primary, fontWeight: "700" },
+
+    // Teams view
     listContent: { paddingBottom: spacing.lg },
     emptyTitle: { ...typography.h3, color: colors.text, marginBottom: spacing.xs },
-    emptyText: {
-      ...typography.body,
-      color: colors.textSecondary,
-      textAlign: "center",
-    },
+    emptyText: { ...typography.body, color: colors.textSecondary, textAlign: "center" },
     sectionHeader: {
       backgroundColor: colors.surface,
       paddingHorizontal: spacing.md,
@@ -210,12 +436,7 @@ function createStyles(colors: Palette) {
       borderBottomColor: colors.border,
       backgroundColor: colors.background,
     },
-    rank: {
-      ...typography.caption,
-      color: colors.textSecondary,
-      width: 22,
-      textAlign: "center",
-    },
+    rank: { ...typography.caption, color: colors.textSecondary, width: 22, textAlign: "center" },
     nameCol: { flex: 1, paddingHorizontal: spacing.xs },
     teamName: { ...typography.label, color: colors.text, fontWeight: "600" },
     teamAbbrev: { ...typography.caption, color: colors.textSecondary },
@@ -223,5 +444,35 @@ function createStyles(colors: Palette) {
     pct: { ...typography.label, color: colors.text, width: 44, textAlign: "center" },
     split: { ...typography.caption, color: colors.textSecondary, width: 44, textAlign: "center" },
     streak: { ...typography.caption, color: colors.primary, width: 30, textAlign: "center", fontWeight: "700" },
+
+    // Players view
+    searchBar: { padding: spacing.md, paddingBottom: spacing.sm },
+    input: {
+      backgroundColor: colors.card,
+      borderRadius: radius.md,
+      paddingHorizontal: spacing.md,
+      paddingVertical: 10,
+      fontSize: 15,
+      color: colors.text,
+    },
+    typePicker: {
+      flexGrow: 0,
+      flexShrink: 0,
+      marginHorizontal: spacing.md,
+      marginBottom: spacing.sm,
+    },
+    typePickerContent: { gap: spacing.xs },
+    typeChip: {
+      paddingVertical: spacing.sm,
+      paddingHorizontal: spacing.md,
+      borderRadius: radius.full,
+      backgroundColor: colors.card,
+    },
+    typeChipActive: { backgroundColor: colors.primary },
+    typeChipText: { ...typography.label, color: colors.textSecondary },
+    typeChipTextActive: { color: colors.textOnPrimary, fontWeight: "700" },
+    playerList: { padding: spacing.md, paddingTop: 0 },
+    footerSpinner: { marginVertical: spacing.md },
+    empty: { ...typography.body, color: colors.textSecondary, textAlign: "center", marginTop: spacing.lg },
   });
 }

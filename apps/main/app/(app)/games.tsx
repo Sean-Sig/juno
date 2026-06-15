@@ -1,4 +1,4 @@
-import React, { useCallback, useEffect, useMemo, useState } from "react";
+import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   FlatList,
   View,
@@ -47,18 +47,8 @@ function basketballPeriodLabel(game: BasketballGame) {
 }
 
 function BasketballGameCard({ game, onPress }: { game: BasketballGame; onPress: () => void }) {
-  const { colors } = useTheme();
-  const styles = useMemo(() => createStyles(colors), [colors]);
   const isLive = game.status === "live";
   const isFinished = game.status === "finished";
-
-  const periods = [
-    { label: "Q1", away: game.away_score_q1, home: game.home_score_q1 },
-    { label: "Q2", away: game.away_score_q2, home: game.home_score_q2 },
-    { label: "Q3", away: game.away_score_q3, home: game.home_score_q3 },
-    { label: "Q4", away: game.away_score_q4, home: game.home_score_q4 },
-  ];
-  const hasPeriodData = periods.some((p) => p.away != null || p.home != null);
 
   return (
     <GameCardShell
@@ -67,11 +57,7 @@ function BasketballGameCard({ game, onPress }: { game: BasketballGame; onPress: 
       isFinished={isFinished}
       statusLabel={isLive ? basketballPeriodLabel(game) : undefined}
       onPress={onPress}
-    >
-      {(isLive || isFinished) && hasPeriodData && (
-        <PeriodRow periods={periods} />
-      )}
-    </GameCardShell>
+    />
   );
 }
 
@@ -87,20 +73,8 @@ function hockeyPeriodLabel(game: HockeyGame) {
 }
 
 function HockeyGameCard({ game, onPress }: { game: HockeyGame; onPress: () => void }) {
-  const { colors } = useTheme();
-  const styles = useMemo(() => createStyles(colors), [colors]);
   const isLive = game.status === "live";
   const isFinished = game.status === "finished";
-
-  const periods = [
-    { label: "P1", away: game.away_score_p1, home: game.home_score_p1 },
-    { label: "P2", away: game.away_score_p2, home: game.home_score_p2 },
-    { label: "P3", away: game.away_score_p3, home: game.home_score_p3 },
-    ...(game.home_score_ot != null || game.away_score_ot != null
-      ? [{ label: game.shootout ? "SO" : "OT", away: game.away_score_ot, home: game.home_score_ot }]
-      : []),
-  ];
-  const hasPeriodData = periods.some((p) => p.away != null || p.home != null);
 
   return (
     <GameCardShell
@@ -109,16 +83,12 @@ function HockeyGameCard({ game, onPress }: { game: HockeyGame; onPress: () => vo
       isFinished={isFinished}
       statusLabel={isLive ? hockeyPeriodLabel(game) : undefined}
       onPress={onPress}
-    >
-      {(isLive || isFinished) && hasPeriodData && (
-        <PeriodRow periods={periods} />
-      )}
-    </GameCardShell>
+    />
   );
 }
 
 // ---------------------------------------------------------------------------
-// Shared card shell
+// Shared card shell — reimagined
 // ---------------------------------------------------------------------------
 type SharedGame = {
   id: string;
@@ -150,90 +120,139 @@ function GameCardShell({
   const { colors } = useTheme();
   const styles = useMemo(() => createStyles(colors), [colors]);
 
-  return (
-    <TouchableOpacity style={styles.card} onPress={onPress} activeOpacity={0.8}>
-      {game.league && (
-        <Text style={styles.leagueBadge}>{game.league.toUpperCase()}</Text>
-      )}
+  const awayWins = isFinished && (game.away_score ?? 0) > (game.home_score ?? 0);
+  const homeWins = isFinished && (game.home_score ?? 0) > (game.away_score ?? 0);
 
-      <View style={styles.statusRow}>
+  return (
+    <TouchableOpacity
+      style={[styles.card, isLive && styles.cardLive]}
+      onPress={onPress}
+      activeOpacity={0.75}
+    >
+      {/* ── Status bar ── */}
+      <View style={styles.cardHeader}>
         {isLive ? (
-          <>
+          <View style={styles.liveRow}>
             <View style={styles.liveDot} />
-            <Text style={styles.liveText}>
-              {statusLabel}
-              {game.period_time ? ` · ${game.period_time}` : ""}
+            <Text style={styles.liveStatus}>
+              {statusLabel ?? "LIVE"}
             </Text>
-          </>
+            {game.period_time ? (
+              <Text style={styles.periodTime}> · {game.period_time}</Text>
+            ) : null}
+          </View>
         ) : isFinished ? (
-          <Text style={styles.finalText}>Final</Text>
+          <Text style={styles.finalBadge}>FINAL</Text>
         ) : (
-          <Text style={styles.scheduleText}>{formatTime(game.scheduled_at)}</Text>
+          <Text style={styles.scheduleTime}>{formatTime(game.scheduled_at)}</Text>
         )}
+        <Text style={styles.leagueBadge}>{game.league?.toUpperCase() ?? ""}</Text>
       </View>
 
-      <View style={styles.matchup}>
-        <TeamRow
-          name={game.away_team?.name ?? "TBD"}
+      {/* ── Teams + scores ── */}
+      <View style={styles.teamsContainer}>
+        <TeamScoreRow
           abbrev={game.away_team?.abbreviation ?? null}
+          name={game.away_team?.name ?? "TBD"}
           score={game.away_score}
           showScore={isLive || isFinished}
-          winner={isFinished && (game.away_score ?? 0) > (game.home_score ?? 0)}
+          winner={awayWins}
+          loser={homeWins}   /* home won → away lost */
         />
-        <Text style={styles.at}>@</Text>
-        <TeamRow
-          name={game.home_team?.name ?? "TBD"}
+        <TeamScoreRow
           abbrev={game.home_team?.abbreviation ?? null}
+          name={game.home_team?.name ?? "TBD"}
           score={game.home_score}
           showScore={isLive || isFinished}
-          winner={isFinished && (game.home_score ?? 0) > (game.away_score ?? 0)}
+          winner={homeWins}
+          loser={awayWins}   /* away won → home lost */
         />
       </View>
 
+      {/* ── Period breakdown (passed as children) ── */}
       {children}
     </TouchableOpacity>
   );
 }
 
-function PeriodRow({ periods }: { periods: { label: string; away: number | null | undefined; home: number | null | undefined }[] }) {
+function TeamScoreRow({
+  abbrev,
+  name,
+  score,
+  showScore,
+  winner,
+  loser,
+}: {
+  abbrev: string | null;
+  name: string;
+  score: number | null;
+  showScore: boolean;
+  winner: boolean;
+  loser: boolean;
+}) {
   const { colors } = useTheme();
   const styles = useMemo(() => createStyles(colors), [colors]);
+
   return (
-    <View style={styles.quarterRow}>
-      {periods.map(({ label, away, home }) => (
-        <View key={label} style={styles.quarterCol}>
-          <Text style={styles.quarterHead}>{label}</Text>
-          <Text style={styles.quarterScore}>{away ?? "-"}</Text>
-          <Text style={styles.quarterScore}>{home ?? "-"}</Text>
-        </View>
-      ))}
+    <View style={styles.teamRow}>
+      <Text style={[styles.teamAbbrev, loser && styles.teamMuted]} numberOfLines={1}>
+        {abbrev ?? name.slice(0, 3).toUpperCase()}
+      </Text>
+      <Text style={[styles.teamName, loser && styles.teamMuted]} numberOfLines={1}>
+        {name}
+      </Text>
+      {showScore && score != null ? (
+        <Text style={[styles.teamScore, winner && styles.teamScoreWinner, loser && styles.teamScoreMuted]}>
+          {score}
+        </Text>
+      ) : !showScore ? (
+        <View style={styles.teamScorePlaceholder} />
+      ) : null}
     </View>
   );
 }
 
-function TeamRow({
-  name,
-  abbrev,
-  score,
-  showScore,
-  winner,
+function PeriodRow({
+  periods,
+  awayAbbrev,
+  homeAbbrev,
 }: {
-  name: string;
-  abbrev: string | null;
-  score: number | null;
-  showScore: boolean;
-  winner: boolean;
+  periods: { label: string; away: number | null | undefined; home: number | null | undefined }[];
+  awayAbbrev?: string | null;
+  homeAbbrev?: string | null;
 }) {
   const { colors } = useTheme();
   const styles = useMemo(() => createStyles(colors), [colors]);
+  const hasData = periods.some((p) => p.away != null || p.home != null);
+  if (!hasData) return null;
+
   return (
-    <View style={styles.teamRow}>
-      <Text style={[styles.teamName, winner && styles.teamNameWinner]} numberOfLines={1}>
-        {abbrev ?? name}
-      </Text>
-      {showScore && score != null && (
-        <Text style={[styles.teamScore, winner && styles.teamScoreWinner]}>{score}</Text>
-      )}
+    <View style={styles.periodGrid}>
+      {/* Header row */}
+      <View style={styles.periodRow}>
+        <Text style={styles.periodTeamLabel} />
+        {periods.map(({ label }) => (
+          <Text key={label} style={styles.periodHead}>{label}</Text>
+        ))}
+      </View>
+      {/* Away row */}
+      <View style={styles.periodRow}>
+        <Text style={styles.periodTeamLabel} numberOfLines={1}>
+          {awayAbbrev ?? "AWY"}
+        </Text>
+        {periods.map(({ label, away }) => (
+          <Text key={label} style={styles.periodScore}>{away ?? "–"}</Text>
+        ))}
+      </View>
+      {/* Home row */}
+      <View style={styles.periodRow}>
+        <Text style={styles.periodTeamLabel} numberOfLines={1}>
+          {homeAbbrev ?? "HME"}
+        </Text>
+        {periods.map(({ label, home }) => (
+          <Text key={label} style={styles.periodScore}>{home ?? "–"}</Text>
+        ))}
+      </View>
     </View>
   );
 }
@@ -250,6 +269,15 @@ function BasketballGamesView() {
   const [games, setGames] = useState<BasketballGame[]>([]);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
+  const initialAutoSwitch = useRef(true);
+
+  // Auto-switch to Upcoming if no live games on first load
+  useEffect(() => {
+    if (!loading && tab === "live" && games.length === 0 && initialAutoSwitch.current) {
+      initialAutoSwitch.current = false;
+      setTab("upcoming");
+    }
+  }, [loading, games.length, tab]);
 
   // Live tab: subscribe to WebSocket channel for real-time score updates.
   // On join the server immediately pushes `basketball_state` (full snapshot),
@@ -332,6 +360,15 @@ function HockeyGamesView() {
   const [games, setGames] = useState<HockeyGame[]>([]);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
+  const initialAutoSwitch = useRef(true);
+
+  // Auto-switch to Upcoming if no live games on first load
+  useEffect(() => {
+    if (!loading && tab === "live" && games.length === 0 && initialAutoSwitch.current) {
+      initialAutoSwitch.current = false;
+      setTab("upcoming");
+    }
+  }, [loading, games.length, tab]);
 
   const load = useCallback(async (filter: FilterTab) => {
     if (filter === "live") {
@@ -381,17 +418,6 @@ function FootballGameCard({ game, onPress }: { game: FootballGame; onPress: () =
   const isLive = game.status === "live";
   const isFinished = game.status === "finished";
 
-  const quarters = [
-    { label: "Q1", away: game.away_score_q1, home: game.home_score_q1 },
-    { label: "Q2", away: game.away_score_q2, home: game.home_score_q2 },
-    { label: "Q3", away: game.away_score_q3, home: game.home_score_q3 },
-    { label: "Q4", away: game.away_score_q4, home: game.home_score_q4 },
-    ...(game.home_score_ot != null || game.away_score_ot != null
-      ? [{ label: "OT", away: game.away_score_ot, home: game.home_score_ot }]
-      : []),
-  ];
-  const hasQuarterData = quarters.some((q) => q.away != null || q.home != null);
-
   return (
     <GameCardShell
       game={game}
@@ -399,11 +425,7 @@ function FootballGameCard({ game, onPress }: { game: FootballGame; onPress: () =
       isFinished={isFinished}
       statusLabel={isLive ? footballQuarterLabel(game) : undefined}
       onPress={onPress}
-    >
-      {(isLive || isFinished) && hasQuarterData && (
-        <PeriodRow periods={quarters} />
-      )}
-    </GameCardShell>
+    />
   );
 }
 
@@ -417,6 +439,15 @@ function FootballGamesView() {
   const [games, setGames] = useState<FootballGame[]>([]);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
+  const initialAutoSwitch = useRef(true);
+
+  // Auto-switch to Upcoming if no live games on first load
+  useEffect(() => {
+    if (!loading && tab === "live" && games.length === 0 && initialAutoSwitch.current) {
+      initialAutoSwitch.current = false;
+      setTab("upcoming");
+    }
+  }, [loading, games.length, tab]);
 
   const load = useCallback(async (filter: FilterTab) => {
     const params: Parameters<typeof football.getGames>[0] = {};
@@ -551,55 +582,147 @@ function createStyles(colors: Palette) {
     emptyTitle: { ...typography.h3, color: colors.text, marginBottom: spacing.xs },
     emptyText: { ...typography.body, color: colors.textSecondary, textAlign: "center" },
 
+    // ── Card shell ──
     card: {
       backgroundColor: colors.card,
-      borderRadius: radius.md,
+      borderRadius: radius.lg,
       padding: spacing.md,
       shadowColor: "#000",
-      shadowOpacity: 0.05,
-      shadowRadius: 4,
-      elevation: 2,
+      shadowOpacity: 0.06,
+      shadowOffset: { width: 0, height: 2 },
+      shadowRadius: 8,
+      elevation: 3,
+      borderLeftWidth: 3,
+      borderLeftColor: "transparent",
     },
-    leagueBadge: {
-      ...typography.caption,
-      color: colors.textSecondary,
-      marginBottom: spacing.xs,
-      fontWeight: "600",
-      letterSpacing: 0.5,
+    cardLive: {
+      borderLeftColor: "#ef4444",
     },
-    statusRow: { flexDirection: "row", alignItems: "center", marginBottom: spacing.sm },
+
+    // ── Status bar ──
+    cardHeader: {
+      flexDirection: "row",
+      alignItems: "center",
+      justifyContent: "space-between",
+      marginBottom: spacing.md,
+    },
+    liveRow: {
+      flexDirection: "row",
+      alignItems: "center",
+      gap: 5,
+    },
     liveDot: {
       width: 7,
       height: 7,
       borderRadius: radius.full,
       backgroundColor: "#ef4444",
-      marginRight: 5,
     },
-    liveText: { ...typography.caption, color: "#ef4444", fontWeight: "700" },
-    finalText: { ...typography.caption, color: colors.textSecondary, fontWeight: "600" },
-    scheduleText: { ...typography.caption, color: colors.textSecondary },
-    matchup: { gap: spacing.xs },
-    at: {
+    liveStatus: {
+      ...typography.caption,
+      color: "#ef4444",
+      fontWeight: "700",
+      letterSpacing: 0.3,
+    },
+    periodTime: {
+      ...typography.caption,
+      color: "#ef4444",
+      fontWeight: "500",
+    },
+    finalBadge: {
       ...typography.caption,
       color: colors.textSecondary,
-      alignSelf: "center",
-      marginVertical: 2,
+      fontWeight: "700",
+      letterSpacing: 0.8,
     },
-    teamRow: { flexDirection: "row", alignItems: "center", justifyContent: "space-between" },
-    teamName: { ...typography.body, color: colors.text, flex: 1, fontWeight: "500" },
-    teamNameWinner: { fontWeight: "700", color: colors.text },
-    teamScore: { ...typography.h3, color: colors.text, minWidth: 30, textAlign: "right" },
-    teamScoreWinner: { color: colors.primary, fontWeight: "800" },
-    quarterRow: {
+    scheduleTime: {
+      ...typography.label,
+      color: colors.text,
+      fontWeight: "600",
+    },
+    leagueBadge: {
+      ...typography.caption,
+      color: colors.textSecondary,
+      fontWeight: "600",
+      letterSpacing: 0.8,
+    },
+
+    // ── Teams ──
+    teamsContainer: {
+      gap: spacing.xs,
+    },
+    teamRow: {
       flexDirection: "row",
-      marginTop: spacing.sm,
+      alignItems: "center",
+      gap: spacing.sm,
+    },
+    teamAbbrev: {
+      fontSize: 13,
+      fontWeight: "700",
+      color: colors.text,
+      width: 36,
+      letterSpacing: 0.3,
+    },
+    teamName: {
+      ...typography.body,
+      color: colors.text,
+      flex: 1,
+      fontWeight: "500",
+    },
+    teamMuted: {
+      color: colors.textSecondary,
+    },
+    teamScore: {
+      fontSize: 26,
+      fontWeight: "800",
+      color: colors.text,
+      minWidth: 42,
+      textAlign: "right",
+      lineHeight: 30,
+    },
+    teamScoreWinner: {
+      color: colors.primary,
+    },
+    teamScoreMuted: {
+      color: colors.textSecondary,
+      fontWeight: "600",
+    },
+    teamScorePlaceholder: {
+      width: 42,
+    },
+
+    // ── Period / quarter grid ──
+    periodGrid: {
+      marginTop: spacing.md,
       paddingTop: spacing.sm,
       borderTopWidth: StyleSheet.hairlineWidth,
       borderTopColor: colors.border,
-      gap: spacing.sm,
+      gap: 3,
     },
-    quarterCol: { alignItems: "center", flex: 1 },
-    quarterHead: { ...typography.caption, color: colors.textSecondary, marginBottom: 2 },
-    quarterScore: { ...typography.caption, color: colors.text, fontWeight: "500" },
+    periodRow: {
+      flexDirection: "row",
+      alignItems: "center",
+    },
+    periodTeamLabel: {
+      fontSize: 11,
+      fontWeight: "600",
+      color: colors.textSecondary,
+      width: 36,
+      letterSpacing: 0.3,
+    },
+    periodHead: {
+      fontSize: 11,
+      fontWeight: "600",
+      color: colors.textSecondary,
+      flex: 1,
+      textAlign: "center",
+      letterSpacing: 0.3,
+    },
+    periodScore: {
+      fontSize: 12,
+      fontWeight: "500",
+      color: colors.text,
+      flex: 1,
+      textAlign: "center",
+    },
   });
 }

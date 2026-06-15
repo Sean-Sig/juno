@@ -221,11 +221,11 @@ export default function GameScreen() {
         {/* Scoreboard */}
         <View style={styles.scoreboard}>
           <View style={[styles.teamBlock, awayWins && styles.teamBlockWinner]}>
-            <Text style={styles.teamAbbrev} numberOfLines={1}>
-              {away?.abbreviation ?? away?.name ?? "TBD"}
+            <Text style={styles.teamName} numberOfLines={1} adjustsFontSizeToFit minimumFontScale={0.6}>
+              {(away as any)?.short_name ?? away?.name ?? "TBD"}
             </Text>
             <Text style={styles.teamFullName} numberOfLines={1}>
-              {away?.name ?? "Away"}
+              {away?.name ?? ""}
             </Text>
             {(isLive || isFinished) && game.away_score != null && (
               <Text style={[styles.score, awayWins && styles.scoreWinner]}>
@@ -237,11 +237,11 @@ export default function GameScreen() {
           <Text style={styles.vsText}>@</Text>
 
           <View style={[styles.teamBlock, homeWins && styles.teamBlockWinner]}>
-            <Text style={styles.teamAbbrev} numberOfLines={1}>
-              {home?.abbreviation ?? home?.name ?? "TBD"}
+            <Text style={styles.teamName} numberOfLines={1} adjustsFontSizeToFit minimumFontScale={0.6}>
+              {(home as any)?.short_name ?? home?.name ?? "TBD"}
             </Text>
             <Text style={styles.teamFullName} numberOfLines={1}>
-              {home?.name ?? "Home"}
+              {home?.name ?? ""}
             </Text>
             {(isLive || isFinished) && game.home_score != null && (
               <Text style={[styles.score, homeWins && styles.scoreWinner]}>
@@ -422,7 +422,9 @@ export default function GameScreen() {
             {[away, home].map((team) =>
               team ? (
                 <View key={team.id} style={styles.recordRow}>
-                  <Text style={styles.recordTeam}>{team.name}</Text>
+                  <Text style={styles.recordTeam} numberOfLines={1}>
+                    {(team as any).short_name ?? team.name}
+                  </Text>
                   <Text style={styles.recordWL}>
                     {isHockeyGame(game, activeSport)
                       ? `${team.wins}-${team.losses}${(team as any).overtime_losses != null ? `-${(team as any).overtime_losses}` : ""}`
@@ -491,9 +493,9 @@ function createStyles(colors: Palette) {
       padding: spacing.lg,
       marginBottom: spacing.md,
     },
-    teamBlock: { flex: 1, alignItems: "center", gap: 4 },
+    teamBlock: { flex: 1, alignItems: "center", gap: 3 },
     teamBlockWinner: {},
-    teamAbbrev: { ...typography.h2, color: colors.text, fontWeight: "800" },
+    teamName: { ...typography.h2, color: colors.text, fontWeight: "800" },
     teamFullName: { ...typography.caption, color: colors.textSecondary },
     score: { ...typography.h1, color: colors.text, fontWeight: "800", marginTop: spacing.xs },
     scoreWinner: { color: colors.primary },
@@ -530,8 +532,8 @@ function createStyles(colors: Palette) {
       padding: spacing.md,
       marginBottom: spacing.xs,
     },
-    recordTeam: { ...typography.body, color: colors.text, fontWeight: "600" },
-    recordWL: { ...typography.label, color: colors.textSecondary },
+    recordTeam: { ...typography.body, color: colors.text, fontWeight: "600", flex: 1, marginRight: spacing.sm },
+    recordWL: { ...typography.label, color: colors.textSecondary, flexShrink: 0 },
     infoCard: {
       backgroundColor: colors.card,
       borderRadius: radius.md,
