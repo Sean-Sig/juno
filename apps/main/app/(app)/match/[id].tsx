@@ -22,10 +22,11 @@ function playerName(player: TennisPlayer | null, fallback?: string): string {
 export default function MatchScreen() {
   const { colors } = useTheme();
   const styles = useMemo(() => createStyles(colors), [colors]);
-  const { id, p1Name, p2Name } = useLocalSearchParams<{
+  const { id, p1Name, p2Name, tournamentName } = useLocalSearchParams<{
     id: string;
     p1Name?: string;
     p2Name?: string;
+    tournamentName?: string;
   }>();
   const [match, setMatch] = useState<TennisMatch | null>(null);
   const [player1, setPlayer1] = useState<TennisPlayer | null>(null);
@@ -37,11 +38,7 @@ export default function MatchScreen() {
 
   // Set system header title + back button
   useEffect(() => {
-    const title = match
-      ? `${match.round} · ${match.type}`
-      : p1Name && p2Name
-      ? `${p1Name} vs ${p2Name}`
-      : "Match";
+    const title = tournamentName ?? (p1Name && p2Name ? `${p1Name} vs ${p2Name}` : "Match");
     navigation.setOptions({
       title,
       headerLeft: () => (
@@ -54,7 +51,7 @@ export default function MatchScreen() {
       ),
       headerRight: () => null,
     });
-  }, [match, p1Name, p2Name, colors.text]);
+  }, [tournamentName, p1Name, p2Name, colors.text]);
 
   useEffect(() => {
     if (!id) return;

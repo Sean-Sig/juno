@@ -34,9 +34,13 @@ export type TennisMatch = {
   id: string;
   tournament_id: string;
   player1_id: string | null;
+  player1: TennisPlayer | null;
   player2_id: string | null;
+  player2: TennisPlayer | null;
   player1_partner_id: string | null;
+  player1_partner: TennisPlayer | null;
   player2_partner_id: string | null;
+  player2_partner: TennisPlayer | null;
   type: string | null;
   round: string | null;
   court: string | null;

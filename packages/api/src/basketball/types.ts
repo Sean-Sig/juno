@@ -1,6 +1,7 @@
 export type BasketballTeam = {
   id: string;
-  name: string;
+  name: string;        // short name e.g. "Celtics"
+  full_name: string | null;  // full name e.g. "Boston Celtics"
   short_name: string | null;
   abbreviation: string | null;
   logo: string | null;

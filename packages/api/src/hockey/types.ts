@@ -1,6 +1,7 @@
 export type HockeyTeam = {
   id: string;
-  name: string;
+  name: string;        // short name e.g. "Hurricanes"
+  full_name: string | null;  // full name e.g. "Carolina Hurricanes"
   short_name: string | null;
   abbreviation: string | null;
   logo: string | null;

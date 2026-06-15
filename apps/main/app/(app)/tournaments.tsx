@@ -3,6 +3,7 @@ import {
   View,
   Text,
   FlatList,
+  TextInput,
   ActivityIndicator,
   RefreshControl,
   StyleSheet,
@@ -44,6 +45,7 @@ export default function TournamentsScreen() {
   const router = useRouter();
 
   const [statusTab, setStatusTab] = useState<StatusTab>("live");
+  const [query, setQuery] = useState("");
   const [tournaments, setTournaments] = useState<GolfTournament[]>([]);
   const [scheduleEntries, setScheduleEntries] = useState<GolfScheduleEntry[]>([]);
   const [selected, setSelected] = useState<GolfTournament | null>(null);
@@ -125,10 +127,34 @@ export default function TournamentsScreen() {
 
   const selectedIsLive = selected?.events?.some((e) => e.live) ?? false;
 
+  // Filtered data for search
+  const q = query.trim().toLowerCase();
+  const filteredScores = useMemo(() => {
+    if (!q) return scores;
+    return scores.filter((s) => {
+      const first = (s.player?.display_first_name ?? s.player?.first_name ?? "").toLowerCase();
+      const last = (s.player?.display_last_name ?? s.player?.last_name ?? "").toLowerCase();
+      return first.includes(q) || last.includes(q) || `${first} ${last}`.includes(q);
+    });
+  }, [scores, q]);
+
+  const filteredUpcoming = useMemo(() => {
+    if (!q) return upcomingEntries;
+    return upcomingEntries.filter((e) => e.name?.toLowerCase().includes(q));
+  }, [upcomingEntries, q]);
+
+  const filteredFinal = useMemo(() => {
+    if (!q) return finalEntries;
+    return finalEntries.filter((e) => e.name?.toLowerCase().includes(q));
+  }, [finalEntries, q]);
+
   // Default to live tab if something is actually live, otherwise upcoming
   useEffect(() => {
     if (!loading) setStatusTab(hasLive ? "live" : "upcoming");
   }, [loading]);
+
+  // Reset search when switching tabs
+  useEffect(() => { setQuery(""); }, [statusTab]);
 
   if (loading) {
     return (
@@ -157,6 +183,21 @@ export default function TournamentsScreen() {
             </Text>
           </TouchableOpacity>
         ))}
+      </View>
+
+      {/* Search bar */}
+      <View style={styles.searchBar}>
+        <TextInput
+          style={styles.searchInput}
+          placeholder={
+            statusTab === "live" ? "Search players…" : "Search tournaments…"
+          }
+          value={query}
+          onChangeText={setQuery}
+          placeholderTextColor={colors.textSecondary}
+          returnKeyType="search"
+          clearButtonMode="while-editing"
+        />
       </View>
 
       {/* ── Live tab ───────────────────────────────────────────────────── */}
@@ -210,13 +251,13 @@ export default function TournamentsScreen() {
             )}
 
             {/* Leaderboard */}
-            {scores.length === 0 ? (
+            {filteredScores.length === 0 ? (
               <View style={styles.center}>
-                <Text style={styles.emptyText}>No scores yet</Text>
+                <Text style={styles.emptyText}>{q ? `No players matching "${query}"` : "No scores yet"}</Text>
               </View>
             ) : (
               <FlatList
-                data={scores}
+                data={filteredScores}
                 keyExtractor={(s) => s.id}
                 refreshControl={
                   <RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor={colors.primary} />
@@ -253,9 +294,9 @@ export default function TournamentsScreen() {
       {/* ── Upcoming tab ───────────────────────────────────────────────── */}
       {statusTab === "upcoming" && (
         <FlatList
-          data={upcomingEntries}
+          data={filteredUpcoming}
           keyExtractor={(e) => e.id}
-          contentContainerStyle={upcomingEntries.length === 0 ? styles.emptyContent : styles.listContent}
+          contentContainerStyle={filteredUpcoming.length === 0 ? styles.emptyContent : styles.listContent}
           refreshControl={
             <RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor={colors.primary} />
           }
@@ -267,8 +308,8 @@ export default function TournamentsScreen() {
           )}
           ListEmptyComponent={
             <View style={styles.emptyWrap}>
-              <Text style={styles.emptyTitle}>No upcoming tournaments</Text>
-              <Text style={styles.emptyText}>Check back soon for the next event.</Text>
+              <Text style={styles.emptyTitle}>{q ? "No results" : "No upcoming tournaments"}</Text>
+              <Text style={styles.emptyText}>{q ? `No tournaments matching "${query}".` : "Check back soon for the next event."}</Text>
             </View>
           }
         />
@@ -277,9 +318,9 @@ export default function TournamentsScreen() {
       {/* ── Final tab ──────────────────────────────────────────────────── */}
       {statusTab === "final" && (
         <FlatList
-          data={finalEntries}
+          data={filteredFinal}
           keyExtractor={(e) => e.id}
-          contentContainerStyle={finalEntries.length === 0 ? styles.emptyContent : styles.listContent}
+          contentContainerStyle={filteredFinal.length === 0 ? styles.emptyContent : styles.listContent}
           refreshControl={
             <RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor={colors.primary} />
           }
@@ -291,8 +332,8 @@ export default function TournamentsScreen() {
           )}
           ListEmptyComponent={
             <View style={styles.emptyWrap}>
-              <Text style={styles.emptyTitle}>No past tournaments</Text>
-              <Text style={styles.emptyText}>Results will appear here after events conclude.</Text>
+              <Text style={styles.emptyTitle}>{q ? "No results" : "No past tournaments"}</Text>
+              <Text style={styles.emptyText}>{q ? `No tournaments matching "${query}".` : "Results will appear here after events conclude."}</Text>
             </View>
           }
         />
@@ -394,6 +435,24 @@ function createStyles(colors: Palette) {
     tabLabel: { ...typography.label, color: colors.textSecondary },
     tabLabelActive: { color: colors.primary, fontWeight: "700" },
     liveDotTab: { width: 6, height: 6, borderRadius: 3, backgroundColor: "#ef4444" },
+
+    // Search bar
+    searchBar: {
+      backgroundColor: colors.surface,
+      paddingHorizontal: spacing.md,
+      paddingVertical: spacing.sm,
+      borderBottomWidth: StyleSheet.hairlineWidth,
+      borderBottomColor: colors.divider,
+    },
+    searchInput: {
+      backgroundColor: colors.card,
+      borderRadius: radius.lg,
+      paddingHorizontal: spacing.md,
+      paddingVertical: spacing.sm,
+      ...typography.body,
+      color: colors.text,
+      height: 40,
+    },
 
     // Tournament picker chips (live tab)
     picker: { flexGrow: 0, flexShrink: 0, marginHorizontal: spacing.md, marginTop: spacing.md },

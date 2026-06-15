@@ -3,6 +3,7 @@ import {
   FlatList,
   View,
   Text,
+  TextInput,
   ActivityIndicator,
   StyleSheet,
   TouchableOpacity,
@@ -98,8 +99,8 @@ type SharedGame = {
   period_time: string | null;
   home_score: number | null;
   away_score: number | null;
-  home_team: { name: string; abbreviation: string | null } | null;
-  away_team: { name: string; abbreviation: string | null } | null;
+  home_team: { name: string; full_name?: string | null; abbreviation: string | null } | null;
+  away_team: { name: string; full_name?: string | null; abbreviation: string | null } | null;
 };
 
 function GameCardShell({
@@ -129,31 +130,40 @@ function GameCardShell({
       onPress={onPress}
       activeOpacity={0.75}
     >
-      {/* ── Status bar ── */}
-      <View style={styles.cardHeader}>
-        {isLive ? (
-          <View style={styles.liveRow}>
-            <View style={styles.liveDot} />
-            <Text style={styles.liveStatus}>
-              {statusLabel ?? "LIVE"}
-            </Text>
-            {game.period_time ? (
-              <Text style={styles.periodTime}> · {game.period_time}</Text>
-            ) : null}
-          </View>
-        ) : isFinished ? (
-          <Text style={styles.finalBadge}>FINAL</Text>
-        ) : (
-          <Text style={styles.scheduleTime}>{formatTime(game.scheduled_at)}</Text>
-        )}
-        <Text style={styles.leagueBadge}>{game.league?.toUpperCase() ?? ""}</Text>
-      </View>
+      {/* ── Live capsule — absolute top-left corner ── */}
+      {isLive && (
+        <View style={styles.liveCapsule}>
+          <View style={styles.liveDot} />
+          <Text style={styles.liveCapsuleText}>
+            {statusLabel ?? "LIVE"}
+            {game.period_time ? `  ·  ${game.period_time}` : ""}
+          </Text>
+        </View>
+      )}
+
+      {/* ── Status bar (non-live only) ── */}
+      {!isLive && (
+        <View style={styles.cardHeader}>
+          {isFinished ? (
+            <Text style={styles.finalBadge}>FINAL</Text>
+          ) : (
+            <Text style={styles.scheduleTime}>{formatTime(game.scheduled_at)}</Text>
+          )}
+          <Text style={styles.leagueBadge}>{game.league?.toUpperCase() ?? ""}</Text>
+        </View>
+      )}
+
+      {/* League badge sits top-right when live */}
+      {isLive && (
+        <Text style={styles.leagueBadgeLive}>{game.league?.toUpperCase() ?? ""}</Text>
+      )}
 
       {/* ── Teams + scores ── */}
-      <View style={styles.teamsContainer}>
+      <View style={[styles.teamsContainer, isLive && styles.teamsContainerLive]}>
         <TeamScoreRow
           abbrev={game.away_team?.abbreviation ?? null}
           name={game.away_team?.name ?? "TBD"}
+          fullName={game.away_team?.full_name}
           score={game.away_score}
           showScore={isLive || isFinished}
           winner={awayWins}
@@ -162,6 +172,7 @@ function GameCardShell({
         <TeamScoreRow
           abbrev={game.home_team?.abbreviation ?? null}
           name={game.home_team?.name ?? "TBD"}
+          fullName={game.home_team?.full_name}
           score={game.home_score}
           showScore={isLive || isFinished}
           winner={homeWins}
@@ -178,6 +189,7 @@ function GameCardShell({
 function TeamScoreRow({
   abbrev,
   name,
+  fullName,
   score,
   showScore,
   winner,
@@ -185,6 +197,7 @@ function TeamScoreRow({
 }: {
   abbrev: string | null;
   name: string;
+  fullName?: string | null;
   score: number | null;
   showScore: boolean;
   winner: boolean;
@@ -198,9 +211,16 @@ function TeamScoreRow({
       <Text style={[styles.teamAbbrev, loser && styles.teamMuted]} numberOfLines={1}>
         {abbrev ?? name.slice(0, 3).toUpperCase()}
       </Text>
-      <Text style={[styles.teamName, loser && styles.teamMuted]} numberOfLines={1}>
-        {name}
-      </Text>
+      <View style={styles.teamNameCol}>
+        <Text style={[styles.teamName, loser && styles.teamMuted]} numberOfLines={1}>
+          {name}
+        </Text>
+        {fullName ? (
+          <Text style={[styles.teamFullName, loser && styles.teamMuted]} numberOfLines={1}>
+            {fullName}
+          </Text>
+        ) : null}
+      </View>
       {showScore && score != null ? (
         <Text style={[styles.teamScore, winner && styles.teamScoreWinner, loser && styles.teamScoreMuted]}>
           {score}
@@ -338,6 +358,14 @@ function BasketballGamesView() {
       refreshing={refreshing}
       onRefresh={onRefresh}
       games={games}
+      filterFn={(g, q) =>
+        (g.home_team?.name?.toLowerCase().includes(q) ?? false) ||
+        (g.home_team?.full_name?.toLowerCase().includes(q) ?? false) ||
+        (g.home_team?.abbreviation?.toLowerCase().includes(q) ?? false) ||
+        (g.away_team?.name?.toLowerCase().includes(q) ?? false) ||
+        (g.away_team?.full_name?.toLowerCase().includes(q) ?? false) ||
+        (g.away_team?.abbreviation?.toLowerCase().includes(q) ?? false)
+      }
       renderGame={(item) => (
         <BasketballGameCard
           game={item}
@@ -394,6 +422,14 @@ function HockeyGamesView() {
       refreshing={refreshing}
       onRefresh={onRefresh}
       games={games}
+      filterFn={(g, q) =>
+        (g.home_team?.name?.toLowerCase().includes(q) ?? false) ||
+        (g.home_team?.full_name?.toLowerCase().includes(q) ?? false) ||
+        (g.home_team?.abbreviation?.toLowerCase().includes(q) ?? false) ||
+        (g.away_team?.name?.toLowerCase().includes(q) ?? false) ||
+        (g.away_team?.full_name?.toLowerCase().includes(q) ?? false) ||
+        (g.away_team?.abbreviation?.toLowerCase().includes(q) ?? false)
+      }
       renderGame={(item) => (
         <HockeyGameCard
           game={item}
@@ -469,6 +505,12 @@ function FootballGamesView() {
       refreshing={refreshing}
       onRefresh={onRefresh}
       games={games}
+      filterFn={(g, q) =>
+        (g.home_team?.name?.toLowerCase().includes(q) ?? false) ||
+        (g.home_team?.abbreviation?.toLowerCase().includes(q) ?? false) ||
+        (g.away_team?.name?.toLowerCase().includes(q) ?? false) ||
+        (g.away_team?.abbreviation?.toLowerCase().includes(q) ?? false)
+      }
       renderGame={(item) => (
         <FootballGameCard
           game={item}
@@ -490,6 +532,7 @@ function GamesListView<T extends { id: string }>({
   onRefresh,
   games,
   renderGame,
+  filterFn,
   leagueSwitcher,
 }: {
   tab: FilterTab;
@@ -499,10 +542,21 @@ function GamesListView<T extends { id: string }>({
   onRefresh: () => void;
   games: T[];
   renderGame: (item: T) => React.ReactElement;
+  filterFn?: (item: T, query: string) => boolean;
   leagueSwitcher?: React.ReactNode;
 }) {
   const { colors } = useTheme();
   const styles = useMemo(() => createStyles(colors), [colors]);
+  const [query, setQuery] = useState("");
+
+  // Reset search when switching tabs
+  useEffect(() => { setQuery(""); }, [tab]);
+
+  const displayed = useMemo(() => {
+    const q = query.trim().toLowerCase();
+    if (!q || !filterFn) return games;
+    return games.filter((g) => filterFn(g, q));
+  }, [games, query, filterFn]);
 
   return (
     <SafeAreaView style={styles.container} edges={["left", "right"]}>
@@ -521,24 +575,41 @@ function GamesListView<T extends { id: string }>({
         ))}
       </View>
 
+      {/* Search bar */}
+      <View style={styles.searchBar}>
+        <TextInput
+          style={styles.searchInput}
+          placeholder="Search teams…"
+          value={query}
+          onChangeText={setQuery}
+          placeholderTextColor={colors.textSecondary}
+          returnKeyType="search"
+          clearButtonMode="while-editing"
+        />
+      </View>
+
       {loading ? (
         <View style={styles.center}>
           <ActivityIndicator color={colors.primary} />
         </View>
       ) : (
         <FlatList
-          data={games}
+          data={displayed}
           keyExtractor={(g) => g.id}
-          contentContainerStyle={games.length === 0 ? styles.emptyContent : styles.listContent}
+          contentContainerStyle={displayed.length === 0 ? styles.emptyContent : styles.listContent}
           refreshControl={
             <RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor={colors.primary} />
           }
           renderItem={({ item }) => renderGame(item)}
           ListEmptyComponent={
             <View style={styles.emptyWrap}>
-              <Text style={styles.emptyTitle}>No games found</Text>
+              <Text style={styles.emptyTitle}>
+                {query.trim() ? "No results" : "No games found"}
+              </Text>
               <Text style={styles.emptyText}>
-                {tab === "live"
+                {query.trim()
+                  ? `No games matching "${query}".`
+                  : tab === "live"
                   ? "No games are live right now."
                   : tab === "upcoming"
                   ? "No upcoming games found."
@@ -576,6 +647,22 @@ function createStyles(colors: Palette) {
     tabItemActive: { borderBottomWidth: 2, borderBottomColor: colors.primary },
     tabLabel: { ...typography.label, color: colors.textSecondary },
     tabLabelActive: { color: colors.primary, fontWeight: "700" },
+    searchBar: {
+      backgroundColor: colors.surface,
+      paddingHorizontal: spacing.md,
+      paddingVertical: spacing.sm,
+      borderBottomWidth: StyleSheet.hairlineWidth,
+      borderBottomColor: colors.divider,
+    },
+    searchInput: {
+      backgroundColor: colors.card,
+      borderRadius: radius.lg,
+      paddingHorizontal: spacing.md,
+      paddingVertical: spacing.sm,
+      ...typography.body,
+      color: colors.text,
+      height: 40,
+    },
     listContent: { padding: spacing.md, gap: spacing.sm },
     emptyContent: { flexGrow: 1, padding: spacing.md },
     emptyWrap: { flex: 1, alignItems: "center", justifyContent: "center", paddingTop: 80 },
@@ -594,39 +681,56 @@ function createStyles(colors: Palette) {
       elevation: 3,
       borderLeftWidth: 3,
       borderLeftColor: "transparent",
+      overflow: "hidden",
     },
     cardLive: {
-      borderLeftColor: "#ef4444",
+      borderLeftColor: "transparent", // capsule replaces the stripe when live
     },
 
-    // ── Status bar ──
+    // ── Live capsule (absolute top-left) ──
+    liveCapsule: {
+      position: "absolute",
+      top: 0,
+      left: 0,
+      flexDirection: "row",
+      alignItems: "center",
+      backgroundColor: "#ef4444",
+      paddingHorizontal: spacing.sm + 2,
+      paddingVertical: 5,
+      borderBottomRightRadius: radius.md,
+      gap: 5,
+      zIndex: 1,
+    },
+    liveDot: {
+      width: 6,
+      height: 6,
+      borderRadius: radius.full,
+      backgroundColor: "#fff",
+    },
+    liveCapsuleText: {
+      fontSize: 11,
+      fontWeight: "700",
+      color: "#fff",
+      letterSpacing: 0.4,
+    },
+    teamsContainerLive: {
+      marginTop: spacing.lg + 4, // push teams below the capsule
+    },
+    leagueBadgeLive: {
+      ...typography.caption,
+      color: colors.textSecondary,
+      fontWeight: "600",
+      letterSpacing: 0.8,
+      textAlign: "right",
+      marginBottom: spacing.xs,
+    },
+
+    // ── Status bar (non-live) ──
     cardHeader: {
       flexDirection: "row",
       alignItems: "center",
       justifyContent: "space-between",
       marginBottom: spacing.md,
-    },
-    liveRow: {
-      flexDirection: "row",
-      alignItems: "center",
-      gap: 5,
-    },
-    liveDot: {
-      width: 7,
-      height: 7,
-      borderRadius: radius.full,
-      backgroundColor: "#ef4444",
-    },
-    liveStatus: {
-      ...typography.caption,
-      color: "#ef4444",
-      fontWeight: "700",
-      letterSpacing: 0.3,
-    },
-    periodTime: {
-      ...typography.caption,
-      color: "#ef4444",
-      fontWeight: "500",
     },
     finalBadge: {
       ...typography.caption,
@@ -662,11 +766,19 @@ function createStyles(colors: Palette) {
       width: 36,
       letterSpacing: 0.3,
     },
+    teamNameCol: {
+      flex: 1,
+      gap: 1,
+    },
     teamName: {
       ...typography.body,
       color: colors.text,
-      flex: 1,
       fontWeight: "500",
+    },
+    teamFullName: {
+      fontSize: 11,
+      color: colors.textSecondary,
+      fontWeight: "400",
     },
     teamMuted: {
       color: colors.textSecondary,

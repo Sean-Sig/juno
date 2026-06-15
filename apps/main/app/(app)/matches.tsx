@@ -13,7 +13,7 @@ import {
 import { Ionicons } from "@expo/vector-icons";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { useRouter } from "expo-router";
-import { tennis, TennisMatch, TennisPlayer, TennisTournament } from "@juno/api";
+import { tennis, joinTennisGamesChannel, TennisMatch, TennisPlayer, TennisTournament } from "@juno/api";
 import { LiveBadge, useTheme, spacing, typography, radius, type Palette } from "@juno/ui";
 
 const TEAM_ID = process.env.EXPO_PUBLIC_TENNIS_TEAM_ID ?? "00000000-0000-0000-0000-000000000002";
@@ -22,11 +22,23 @@ const TEAM_ID = process.env.EXPO_PUBLIC_TENNIS_TEAM_ID ?? "00000000-0000-0000-00
 // Helpers
 // ---------------------------------------------------------------------------
 
-function playerName(player: TennisPlayer | undefined): string {
-  if (!player) return "TBD";
-  const first = player.display_first_name ?? player.first_name;
-  const last = player.display_last_name ?? player.last_name;
-  return `${first} ${last}`;
+function playerName(player: TennisPlayer | null | undefined): string {
+  if (!player) return "";
+  const first = player.display_first_name ?? player.first_name ?? "";
+  const last = player.display_last_name ?? player.last_name ?? "";
+  return `${first} ${last}`.trim();
+}
+
+// Resolve a player: prefer the embedded object on the match, fall back to the
+// playerMap (populated via getTournamentPlayers + supplementary fetches).
+function resolvePlayer(
+  embedded: TennisPlayer | null | undefined,
+  id: string | null | undefined,
+  map: Map<string, TennisPlayer>,
+): TennisPlayer | undefined {
+  if (embedded) return embedded;
+  if (id) return map.get(id);
+  return undefined;
 }
 
 function formatTime(iso: string): string {
@@ -79,12 +91,40 @@ const FILTERS: { key: FilterType; label: string }[] = [
   { key: "doubles", label: "Doubles" },
 ];
 
-function matchPassesFilter(match: TennisMatch, filter: FilterType): boolean {
+function matchPassesFilter(
+  match: TennisMatch,
+  filter: FilterType,
+  playerMap: Map<string, TennisPlayer>,
+): boolean {
   if (filter === "all") return true;
-  const type = (match.type ?? "").toUpperCase();
-  if (filter === "ms") return type === "MS";
-  if (filter === "ws") return type === "WS";
-  if (filter === "doubles") return ["MD", "WD", "MX"].includes(type);
+
+  const type = (match.type ?? "").toUpperCase().trim();
+
+  // Doubles: any type that clearly indicates doubles
+  const isDoubles = ["MD", "WD", "MX", "XD", "D", "MIXED"].some((t) => type.includes(t));
+  if (filter === "doubles") return isDoubles;
+
+  // Singles only from here
+  if (isDoubles) return false;
+
+  // Try to determine gender from type string first
+  const typeImpliesMale   = type === "MS" || type === "M" || type === "M_SINGLES" || type.startsWith("M");
+  const typeImpliesFemale = type === "WS" || type === "W" || type === "LS" || type === "W_SINGLES" || type.startsWith("W") || type.startsWith("L");
+
+  if (filter === "ms") {
+    if (typeImpliesMale)   return true;
+    if (typeImpliesFemale) return false;
+    const g = resolvePlayer(match.player1, match.player1_id, playerMap)?.gender;
+    return g === "male" || g === "M";
+  }
+
+  if (filter === "ws") {
+    if (typeImpliesFemale) return true;
+    if (typeImpliesMale)   return false;
+    const g = resolvePlayer(match.player1, match.player1_id, playerMap)?.gender;
+    return g === "female" || g === "F";
+  }
+
   return true;
 }
 
@@ -115,6 +155,13 @@ export default function MatchesScreen() {
   const initialAutoSwitch = useRef(true);
   const router = useRouter();
 
+  // ---------------------------------------------------------------------------
+  // Load tournaments + matches + players together.
+  // Players are also embedded on each match by the API, but we keep the
+  // playerMap as a fallback for any matches where embedded data is null
+  // (e.g. backend hasn't fully deployed the changelog yet, or opponents
+  // not in the followed-player list).
+  // ---------------------------------------------------------------------------
   const load = useCallback(() => {
     return Promise.all([
       tennis.getTournaments(TEAM_ID),
@@ -123,17 +170,107 @@ export default function MatchesScreen() {
     ]).then(([{ data: tournamentData }, { data: matchData }, { data: playerData }]) => {
       setTournaments(tournamentData);
       setAllMatches(matchData);
+
       const map = new Map<string, TennisPlayer>();
       for (const p of playerData) map.set(p.id, p);
       setPlayerMap(map);
+
+      // Fetch any player IDs referenced in matches that aren't in the list
+      // (opponents, non-followed players, etc.) so names never show as "…".
+      const missing = new Set<string>();
+      for (const m of matchData) {
+        // If the API has embedded the player, no need to fetch separately
+        if (!m.player1    && m.player1_id    && !map.has(m.player1_id))    missing.add(m.player1_id);
+        if (!m.player2    && m.player2_id    && !map.has(m.player2_id))    missing.add(m.player2_id);
+        if (!m.player1_partner && m.player1_partner_id && !map.has(m.player1_partner_id)) missing.add(m.player1_partner_id);
+        if (!m.player2_partner && m.player2_partner_id && !map.has(m.player2_partner_id)) missing.add(m.player2_partner_id);
+      }
+
+      if (missing.size > 0) {
+        Promise.allSettled(
+          Array.from(missing).map((id) => tennis.getPlayer(id))
+        ).then((results) => {
+          const extra: TennisPlayer[] = [];
+          for (const r of results) {
+            if (r.status === "fulfilled" && r.value.data) extra.push(r.value.data);
+          }
+          if (extra.length > 0) {
+            setPlayerMap((prev) => {
+              const next = new Map(prev);
+              for (const p of extra) next.set(p.id, p);
+              return next;
+            });
+          }
+        }).catch(() => {});
+      }
     }).catch(() => {});
   }, []);
 
+  // Initial load (runs once on mount regardless of tab)
   useEffect(() => {
     load().finally(() => setLoading(false));
   }, [load]);
 
+  // ---------------------------------------------------------------------------
+  // Live tab: WebSocket channel (sport:tennis:games)
+  //   tennis_state → full snapshot of live matches on join
+  //   tennis_delta → changed matches only; merge by id
+  // ---------------------------------------------------------------------------
+  useEffect(() => {
+    if (statusTab !== "live") return;
+
+    const channel = joinTennisGamesChannel({
+      onState: (incoming) => {
+        setAllMatches(incoming);
+        // Fetch any players missing from the map (embedded may be null)
+        setPlayerMap((prev) => {
+          const missing = new Set<string>();
+          for (const m of incoming) {
+            if (!m.player1    && m.player1_id    && !prev.has(m.player1_id))    missing.add(m.player1_id);
+            if (!m.player2    && m.player2_id    && !prev.has(m.player2_id))    missing.add(m.player2_id);
+            if (!m.player1_partner && m.player1_partner_id && !prev.has(m.player1_partner_id)) missing.add(m.player1_partner_id);
+            if (!m.player2_partner && m.player2_partner_id && !prev.has(m.player2_partner_id)) missing.add(m.player2_partner_id);
+          }
+          if (missing.size > 0) {
+            Promise.allSettled(Array.from(missing).map((id) => tennis.getPlayer(id)))
+              .then((results) => {
+                const extra: TennisPlayer[] = [];
+                for (const r of results) {
+                  if (r.status === "fulfilled" && r.value.data) extra.push(r.value.data);
+                }
+                if (extra.length > 0) {
+                  setPlayerMap((p) => {
+                    const next = new Map(p);
+                    for (const player of extra) next.set(player.id, player);
+                    return next;
+                  });
+                }
+              }).catch(() => {});
+          }
+          return prev;
+        });
+      },
+      onDelta: (changed) => {
+        setAllMatches((prev) => {
+          const map = new Map(prev.map((m) => [m.id, m]));
+          changed.forEach((m) => map.set(m.id, m));
+          return Array.from(map.values());
+        });
+      },
+    });
+
+    return () => { channel.leave(); };
+  }, [statusTab]);
+
+  // Upcoming / Final tabs: re-fetch matches on tab switch
+  useEffect(() => {
+    if (statusTab === "live") return;
+    setLoading(true);
+    load().finally(() => setLoading(false));
+  }, [statusTab]);
+
   function onRefresh() {
+    if (statusTab === "live") return; // socket pushes updates automatically
     setRefreshing(true);
     load().finally(() => setRefreshing(false));
   }
@@ -168,7 +305,7 @@ export default function MatchesScreen() {
         .filter(isFinishedMatch)
         .sort((a, b) => (b.finished_at ?? "").localeCompare(a.finished_at ?? ""));
     }
-    filtered = filtered.filter((m) => matchPassesFilter(m, filter));
+    filtered = filtered.filter((m) => matchPassesFilter(m, filter, playerMap));
 
     // Group by tournament_id preserving order of first appearance
     const groupMap = new Map<string, TennisMatch[]>();
@@ -185,7 +322,7 @@ export default function MatchesScreen() {
       result.push({ tournament: t, data: matches });
     }
     return result;
-  }, [allMatches, statusTab, filter, tournamentMap]);
+  }, [allMatches, statusTab, filter, tournamentMap, playerMap]);
 
   // Live tab: expand all by default (you want to see scores immediately).
   // Upcoming / Final: start collapsed so you can browse the tournament list.
@@ -288,11 +425,12 @@ export default function MatchesScreen() {
               match={item}
               playerMap={playerMap}
               onPress={() => {
-                const p1 = item.player1_id ? playerMap.get(item.player1_id) : undefined;
-                const p2 = item.player2_id ? playerMap.get(item.player2_id) : undefined;
+                const p1 = resolvePlayer(item.player1, item.player1_id, playerMap);
+                const p2 = resolvePlayer(item.player2, item.player2_id, playerMap);
+                const tournamentName = tournamentMap.get(item.tournament_id)?.name;
                 router.push({
                   pathname: `/match/${item.id}`,
-                  params: { p1Name: playerName(p1), p2Name: playerName(p2) },
+                  params: { p1Name: playerName(p1), p2Name: playerName(p2), tournamentName },
                 });
               }}
               onPlayerPress={(playerId) => {
@@ -358,11 +496,6 @@ function TournamentHeader({
     >
       <View style={styles.tournamentHeaderRow}>
         <Text style={styles.tournamentName} numberOfLines={1}>{tournament.name}</Text>
-        {statusTab === "live" && (
-          <View style={styles.liveIndicator}>
-            <Text style={styles.liveIndicatorText}>LIVE</Text>
-          </View>
-        )}
         {!expanded && (
           <Text style={styles.collapsedCount}>
             {matchCount} {matchCount === 1 ? "match" : "matches"}
@@ -402,93 +535,127 @@ function MatchCard({
   const live = isLiveMatch(match);
   const finished = isFinishedMatch(match);
 
-  const p1 = match.player1_id ? playerMap.get(match.player1_id) : undefined;
-  const p2 = match.player2_id ? playerMap.get(match.player2_id) : undefined;
-  const p1Partner = match.player1_partner_id ? playerMap.get(match.player1_partner_id) : undefined;
-  const p2Partner = match.player2_partner_id ? playerMap.get(match.player2_partner_id) : undefined;
-
-  const p1Name = p1Partner ? `${playerName(p1)} / ${playerName(p1Partner)}` : playerName(p1);
-  const p2Name = p2Partner ? `${playerName(p2)} / ${playerName(p2Partner)}` : playerName(p2);
+  // Prefer embedded player objects (API changelog); fall back to playerMap
+  // (populated via getTournamentPlayers + supplementary fetches) so names
+  // always resolve regardless of whether the backend has deployed embedding.
+  const p1Name        = match.player1_id ? (playerName(resolvePlayer(match.player1, match.player1_id, playerMap)) || "…") : "TBD";
+  const p1PartnerName = match.player1_partner_id ? (playerName(resolvePlayer(match.player1_partner, match.player1_partner_id, playerMap)) || null) : null;
+  const p2Name        = match.player2_id ? (playerName(resolvePlayer(match.player2, match.player2_id, playerMap)) || "…") : "TBD";
+  const p2PartnerName = match.player2_partner_id ? (playerName(resolvePlayer(match.player2_partner, match.player2_partner_id, playerMap)) || null) : null;
 
   return (
-    <TouchableOpacity style={styles.card} onPress={onPress} activeOpacity={0.7}>
-      {/* Status row */}
-      <View style={styles.statusRow}>
-        {live ? (
-          <>
-            <View style={styles.liveDotCard} />
-            <Text style={styles.liveText}>Live</Text>
-            {match.court ? <Text style={styles.statusDetail}>· {match.court}</Text> : null}
-          </>
-        ) : finished ? (
-          <Text style={styles.finalText}>Final</Text>
-        ) : (
-          <>
-            {match.starts_at
-              ? <Text style={styles.scheduleText}>{formatTime(match.starts_at)}</Text>
-              : <Text style={styles.scheduleText}>Scheduled</Text>}
-            {match.court ? <Text style={styles.statusDetail}>· {match.court}</Text> : null}
-          </>
-        )}
-        {match.round ? <Text style={styles.roundBadge}>{match.round}</Text> : null}
-        {!match.round && match.type ? <Text style={styles.roundBadge}>{match.type}</Text> : null}
-      </View>
+    <TouchableOpacity style={[styles.card, live && styles.cardLive]} onPress={onPress} activeOpacity={0.7}>
 
-      {/* Player rows with set scores */}
-      <View style={styles.scoreRow}>
-        <View style={styles.playerCol}>
-          <TouchableOpacity
-            onPress={() => match.player1_id && onPlayerPress(match.player1_id)}
-            disabled={!match.player1_id}
-            activeOpacity={0.6}
-            hitSlop={{ top: 4, bottom: 4, left: 0, right: 0 }}
-          >
-            <Text style={[styles.playerName, match.winner === 1 && styles.winner]} numberOfLines={1}>
-              {p1Name}
-            </Text>
-          </TouchableOpacity>
-          <TouchableOpacity
-            onPress={() => match.player2_id && onPlayerPress(match.player2_id)}
-            disabled={!match.player2_id}
-            activeOpacity={0.6}
-            hitSlop={{ top: 4, bottom: 4, left: 0, right: 0 }}
-          >
-            <Text style={[styles.playerName, match.winner === 2 && styles.winner]} numberOfLines={1}>
-              {p2Name}
-            </Text>
-          </TouchableOpacity>
+      {/* Live capsule — absolute top-left corner */}
+      {live && (
+        <View style={styles.liveCapsule}>
+          <View style={styles.liveCapsuleDot} />
+          <Text style={styles.liveCapsuleText}>
+            {"LIVE"}
+            {match.court ? `  ·  ${match.court}` : ""}
+          </Text>
         </View>
+      )}
 
-        {/* Set scores */}
-        <View style={styles.setsRow}>
-          {(match.sets ?? []).map((set, i) => {
-            const isLastSet = i === (match.sets.length - 1);
-            return (
-              <View key={i} style={styles.setCol}>
-                <Text style={[
-                  styles.setScore,
-                  match.winner === 1 && isLastSet && finished && styles.winningSet,
-                ]}>
-                  {set["1"].games}{set["1"].tiebreak != null ? `(${set["1"].tiebreak})` : ""}
-                </Text>
-                <Text style={[
-                  styles.setScore,
-                  match.winner === 2 && isLastSet && finished && styles.winningSet,
-                ]}>
-                  {set["2"].games}{set["2"].tiebreak != null ? `(${set["2"].tiebreak})` : ""}
-                </Text>
-              </View>
-            );
-          })}
-
-          {/* Live game score */}
-          {live && match.live && (
-            <View style={[styles.setCol, styles.liveSetCol]}>
-              <Text style={[styles.setScore, styles.liveScore]}>{match.live.game_score_1 ?? ""}</Text>
-              <Text style={[styles.setScore, styles.liveScore]}>{match.live.game_score_2 ?? ""}</Text>
-            </View>
+      {/* Status row (non-live only) */}
+      {!live && (
+        <View style={styles.statusRow}>
+          {finished ? (
+            <Text style={styles.finalText}>Final</Text>
+          ) : (
+            <>
+              {match.starts_at
+                ? <Text style={styles.scheduleText}>{formatTime(match.starts_at)}</Text>
+                : <Text style={styles.scheduleText}>Scheduled</Text>}
+              {match.court ? <Text style={styles.statusDetail}>· {match.court}</Text> : null}
+            </>
           )}
+          {match.round && !/^\d+$/.test(match.round) ? <Text style={styles.roundBadge}>{match.round}</Text> : null}
+          {!match.round && match.type && !/^\d+$/.test(match.type) ? <Text style={styles.roundBadge}>{match.type}</Text> : null}
         </View>
+      )}
+
+      {/* Round badge sits top-right when live (only show human-readable labels) */}
+      {live && (() => {
+        const label = match.round ?? match.type;
+        return label && !/^\d+$/.test(label)
+          ? <Text style={styles.roundBadgeLive}>{label}</Text>
+          : null;
+      })()}
+
+      {/* Score grid — one row per team so doubles partners stack naturally */}
+      <View style={[styles.scoreGrid, live && styles.scoreGridLive]}>
+        {([
+          { team: 1 as const, mainId: match.player1_id, partnerId: match.player1_partner_id, mainName: p1Name, partnerName: p1PartnerName },
+          { team: 2 as const, mainId: match.player2_id, partnerId: match.player2_partner_id, mainName: p2Name, partnerName: p2PartnerName },
+        ]).map(({ team, mainId, partnerId, mainName, partnerName }) => {
+          const isWinner  = finished && match.winner === team;
+          const isLoser   = finished && match.winner !== null && match.winner !== team;
+          const isServing = live && match.live?.server === String(team);
+          const opp       = team === 1 ? "2" : "1";
+
+          return (
+            <View key={team} style={styles.teamRow}>
+
+              {/* Serving dot (or placeholder to keep alignment) */}
+              {live
+                ? <View style={isServing ? styles.servingDot : styles.servingDotPlaceholder} />
+                : null}
+
+              {/* Names — main player (tappable) + optional partner */}
+              <View style={styles.teamNames}>
+                <TouchableOpacity
+                  onPress={() => mainId && onPlayerPress(mainId)}
+                  disabled={!mainId}
+                  activeOpacity={0.6}
+                  hitSlop={{ top: 4, bottom: 4, left: 0, right: 0 }}
+                >
+                  <Text style={[styles.playerName, isWinner && styles.playerWon, isLoser && styles.playerLost]} numberOfLines={1}>
+                    {mainName}
+                  </Text>
+                </TouchableOpacity>
+                {partnerName && (
+                  <TouchableOpacity
+                    onPress={() => partnerId && onPlayerPress(partnerId)}
+                    disabled={!partnerId}
+                    activeOpacity={0.6}
+                    hitSlop={{ top: 4, bottom: 4, left: 0, right: 0 }}
+                  >
+                    <Text style={[styles.partnerName, isLoser && styles.playerLost]} numberOfLines={1}>
+                      {partnerName}
+                    </Text>
+                  </TouchableOpacity>
+                )}
+              </View>
+
+              {/* Set scores for this team */}
+              {(match.sets ?? []).map((set, i) => {
+                const myGames  = set[String(team) as "1" | "2"].games;
+                const oppGames = set[opp as "1" | "2"].games;
+                const myTb     = set[String(team) as "1" | "2"].tiebreak;
+                const wonSet   = myGames > oppGames;
+                const lostSet  = myGames < oppGames;
+                return (
+                  <View key={i} style={styles.setScoreCell}>
+                    <Text style={[styles.setGames, wonSet && styles.setGamesWon, lostSet && styles.setGamesLost]}>
+                      {myGames}
+                    </Text>
+                    {myTb != null && <Text style={styles.tiebreakScore}>{myTb}</Text>}
+                  </View>
+                );
+              })}
+
+              {/* Live game score for this team */}
+              {live && match.live && (
+                <View style={[styles.setScoreCell, styles.gameScoreCell]}>
+                  <Text style={styles.gameScore}>
+                    {team === 1 ? (match.live.game_score_1 ?? "") : (match.live.game_score_2 ?? "")}
+                  </Text>
+                </View>
+              )}
+            </View>
+          );
+        })}
       </View>
     </TouchableOpacity>
   );
@@ -574,22 +741,6 @@ function createStyles(colors: Palette) {
       color: colors.text,
       flex: 1,
     },
-    collapsedCount: {
-      ...typography.caption,
-      color: colors.textSecondary,
-    },
-    liveIndicator: {
-      backgroundColor: "#ef4444",
-      borderRadius: radius.full,
-      paddingHorizontal: spacing.sm,
-      paddingVertical: 2,
-    },
-    liveIndicatorText: {
-      ...typography.caption,
-      color: "#fff",
-      fontWeight: "700",
-      letterSpacing: 0.5,
-    },
     tournamentMeta: {
       flexDirection: "row",
       alignItems: "center",
@@ -598,6 +749,7 @@ function createStyles(colors: Palette) {
     },
     tournamentMetaText: { ...typography.caption, color: colors.textSecondary },
     tournamentMetaDot: { ...typography.caption, color: colors.textSecondary },
+    collapsedCount: { ...typography.caption, color: colors.textSecondary },
 
     // Match card
     card: {
@@ -609,22 +761,53 @@ function createStyles(colors: Palette) {
       shadowOpacity: 0.05,
       shadowRadius: 4,
       elevation: 2,
+      overflow: "hidden",
+    },
+    cardLive: {
+      // no left border — capsule handles the live signal
     },
 
-    // Status row
+    // Live capsule — absolute top-left
+    liveCapsule: {
+      position: "absolute",
+      top: 0,
+      left: 0,
+      flexDirection: "row",
+      alignItems: "center",
+      backgroundColor: "#ef4444",
+      paddingHorizontal: spacing.sm + 2,
+      paddingVertical: 5,
+      borderBottomRightRadius: radius.md,
+      gap: 5,
+      zIndex: 1,
+    },
+    liveCapsuleDot: {
+      width: 6,
+      height: 6,
+      borderRadius: radius.full,
+      backgroundColor: "#fff",
+    },
+    liveCapsuleText: {
+      fontSize: 11,
+      fontWeight: "700",
+      color: "#fff",
+      letterSpacing: 0.4,
+    },
+    roundBadgeLive: {
+      ...typography.caption,
+      color: colors.textSecondary,
+      fontWeight: "600",
+      textAlign: "right",
+      marginBottom: spacing.xs,
+    },
+
+    // Status row (non-live)
     statusRow: {
       flexDirection: "row",
       alignItems: "center",
       marginBottom: spacing.sm,
       gap: 5,
     },
-    liveDotCard: {
-      width: 7,
-      height: 7,
-      borderRadius: radius.full,
-      backgroundColor: "#ef4444",
-    },
-    liveText: { ...typography.caption, color: "#ef4444", fontWeight: "700" },
     finalText: { ...typography.caption, color: colors.textSecondary, fontWeight: "600" },
     scheduleText: { ...typography.caption, color: colors.textSecondary },
     statusDetail: { ...typography.caption, color: colors.textSecondary },
@@ -635,22 +818,71 @@ function createStyles(colors: Palette) {
       fontWeight: "600",
     },
 
-    // Player / score layout
-    scoreRow: { flexDirection: "row", alignItems: "center" },
-    playerCol: { flex: 1, marginRight: spacing.sm },
-    playerName: { ...typography.body, color: colors.text, marginBottom: 4 },
-    winner: { fontWeight: "700", color: colors.text },
+    // Score grid — outer column, one teamRow per team
+    scoreGrid: { flexDirection: "column", gap: 8 },
+    scoreGridLive: { marginTop: spacing.lg + 4 },
 
-    // Sets
-    setsRow: { flexDirection: "row", gap: 6 },
-    setCol: { alignItems: "center", minWidth: 22 },
-    liveSetCol: {
-      borderLeftWidth: 1,
-      borderLeftColor: colors.border,
-      paddingLeft: 6,
+    // One horizontal row per team (names + set scores side by side)
+    teamRow: {
+      flexDirection: "row",
+      alignItems: "center",
+      gap: 8,
     },
-    setScore: { ...typography.body, color: colors.text, textAlign: "center", marginBottom: 4 },
-    winningSet: { fontWeight: "700" },
-    liveScore: { color: colors.live ?? colors.primary, fontWeight: "700" },
+
+    // Serving indicator
+    servingDot: {
+      width: 7,
+      height: 7,
+      borderRadius: radius.full,
+      backgroundColor: "#c8f000", // tennis-ball yellow-green
+      flexShrink: 0,
+    },
+    servingDotPlaceholder: { width: 7, height: 7, flexShrink: 0 },
+
+    // Names column
+    teamNames: { flex: 1, gap: 2 },
+    playerName: { ...typography.body, color: colors.text },
+    partnerName: { ...typography.caption, color: colors.textSecondary, fontWeight: "500" },
+    playerWon:  { fontWeight: "700", color: colors.text },
+    playerLost: { color: colors.textSecondary },
+
+    // Set score cell (one per set per team)
+    setScoreCell: {
+      flexDirection: "row",
+      alignItems: "flex-start",
+      minWidth: 20,
+      justifyContent: "center",
+    },
+    setGames: {
+      fontSize: 16,
+      fontWeight: "500",
+      color: colors.text,
+      textAlign: "center",
+      lineHeight: 20,
+    },
+    setGamesWon:  { fontWeight: "700", color: colors.text },
+    setGamesLost: { color: colors.textSecondary, fontWeight: "400" },
+    tiebreakScore: {
+      fontSize: 9,
+      color: colors.textSecondary,
+      lineHeight: 12,
+      marginTop: 1,
+    },
+
+    // Live game score cell (rightmost, separated by hairline)
+    gameScoreCell: {
+      borderLeftWidth: StyleSheet.hairlineWidth,
+      borderLeftColor: colors.border,
+      paddingLeft: 8,
+      minWidth: 28,
+      justifyContent: "center",
+    },
+    gameScore: {
+      fontSize: 16,
+      fontWeight: "700",
+      color: colors.live ?? colors.primary,
+      textAlign: "center",
+      lineHeight: 20,
+    },
   });
 }
