@@ -13,6 +13,8 @@ import {
 import { useSport, ALL_SPORTS, type Sport } from "@juno/api";
 import { useTheme, spacing, radius, typography, type Palette } from "@juno/ui";
 import { FollowedPlayersProvider } from "../../context/FollowedPlayersContext";
+import { ScoutCreditsProvider, useScoutCredits } from "../../context/ScoutCreditsContext";
+import { CreditSheet } from "../../components/CreditSheet";
 
 const SPORT_META: Record<Sport, { label: string; emoji: string }> = {
   golf: { label: "Golf", emoji: "⛳" },
@@ -119,6 +121,49 @@ const meta = SPORT_META[activeSport];
 }
 
 // ---------------------------------------------------------------------------
+// Gold coin chip for nav header
+// ---------------------------------------------------------------------------
+function CoinChip() {
+  const { credits, openSheet } = useScoutCredits();
+  const { colors } = useTheme();
+
+  if (credits === null) return null;
+
+  const outOfCredits = credits <= 0;
+
+  return (
+    <TouchableOpacity
+      onPress={openSheet}
+      activeOpacity={0.75}
+      style={{
+        flexDirection: "row",
+        alignItems: "center",
+        gap: 5,
+        backgroundColor: outOfCredits ? "#FF3B30" : colors.primary,
+        borderRadius: radius.full,
+        paddingVertical: 5,
+        paddingHorizontal: 10,
+        marginRight: spacing.sm,
+      }}
+    >
+      <View style={{
+        width: 16,
+        height: 16,
+        borderRadius: 8,
+        backgroundColor: "#FFD700",
+        borderWidth: 2,
+        borderColor: "#B8860B",
+        shadowColor: "#FFD700",
+        shadowOffset: { width: 0, height: 1 },
+        shadowOpacity: 0.6,
+        shadowRadius: 2,
+      }} />
+      <Text style={{ color: "#fff", fontWeight: "700", fontSize: 13 }}>{credits}</Text>
+    </TouchableOpacity>
+  );
+}
+
+// ---------------------------------------------------------------------------
 // Tab layout
 // ---------------------------------------------------------------------------
 export default function AppLayout() {
@@ -127,6 +172,8 @@ export default function AppLayout() {
 
   return (
     <FollowedPlayersProvider>
+    <ScoutCreditsProvider>
+    <CreditSheet />
     <Tabs
       screenOptions={{
         tabBarActiveTintColor: colors.primary,
@@ -138,6 +185,8 @@ export default function AppLayout() {
         headerTitleStyle: { ...(typography.h3 as object) },
         headerLeft: () => <SportSwitcherButton />,
         headerLeftContainerStyle: { paddingLeft: spacing.sm },
+        headerRight: () => <CoinChip />,
+        headerRightContainerStyle: { paddingRight: spacing.sm },
       }}
     >
       {/* Hidden redirect — keeps the route alive for deep links */}
@@ -189,7 +238,16 @@ export default function AppLayout() {
         }}
       />
 
-      {/* Tab 3 — Profile */}
+      {/* Tab 3 — Scout */}
+      <Tabs.Screen
+        name="scout"
+        options={{
+          title: "Scout",
+          tabBarIcon: ({ color, size }) => <Ionicons name="telescope-outline" color={color} size={size} />,
+        }}
+      />
+
+      {/* Tab 4 — Profile */}
       <Tabs.Screen
         name="profile"
         options={{
@@ -203,6 +261,7 @@ export default function AppLayout() {
       <Tabs.Screen name="scorecard" options={{ href: null, title: "Scorecard" }} />
       <Tabs.Screen name="sport-settings" options={{ href: null, title: "Followed Sports" }} />
     </Tabs>
+    </ScoutCreditsProvider>
     </FollowedPlayersProvider>
   );
 }

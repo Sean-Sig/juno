@@ -54,7 +54,12 @@ export async function apiFetch<T>(
   }
 
   if (!res.ok) {
-    throw new Error(`API error ${res.status}: ${path}`);
+    let detail = "";
+    try {
+      const errBody = await res.json() as Record<string, unknown>;
+      detail = (errBody.detail ?? errBody.reason ?? errBody.error ?? "") as string;
+    } catch {}
+    throw new Error(`API error ${res.status}: ${detail || path}`);
   }
 
   return res.json() as Promise<T>;

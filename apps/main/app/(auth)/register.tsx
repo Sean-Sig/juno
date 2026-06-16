@@ -11,6 +11,7 @@ import {
 } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { useRouter } from "expo-router";
+import { Ionicons } from "@expo/vector-icons";
 import { useAuth } from "@juno/api";
 import { useTheme, spacing, typography, radius, type Palette } from "@juno/ui";
 
@@ -22,6 +23,8 @@ export default function RegisterScreen() {
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [confirmPassword, setConfirmPassword] = useState("");
+  const [showPassword, setShowPassword] = useState(false);
+  const [showConfirm, setShowConfirm] = useState(false);
   const [emailError, setEmailError] = useState("");
   const [passwordError, setPasswordError] = useState("");
   const [confirmError, setConfirmError] = useState("");
@@ -84,26 +87,36 @@ export default function RegisterScreen() {
         </View>
 
         <View style={styles.field}>
-          <TextInput
-            style={styles.input}
-            placeholder="Password"
-            placeholderTextColor={colors.textSecondary}
-            secureTextEntry
-            value={password}
-            onChangeText={setPassword}
-          />
+          <View style={styles.inputRow}>
+            <TextInput
+              style={styles.inputFlex}
+              placeholder="Password"
+              placeholderTextColor={colors.textSecondary}
+              secureTextEntry={!showPassword}
+              value={password}
+              onChangeText={setPassword}
+            />
+            <TouchableOpacity onPress={() => setShowPassword((v) => !v)} style={styles.eyeButton}>
+              <Ionicons name={showPassword ? "eye-off" : "eye"} size={20} color={colors.textSecondary} />
+            </TouchableOpacity>
+          </View>
           {passwordError ? <Text style={styles.fieldError}>{passwordError}</Text> : null}
         </View>
 
         <View style={styles.field}>
-          <TextInput
-            style={styles.input}
-            placeholder="Confirm Password"
-            placeholderTextColor={colors.textSecondary}
-            secureTextEntry
-            value={confirmPassword}
-            onChangeText={setConfirmPassword}
-          />
+          <View style={styles.inputRow}>
+            <TextInput
+              style={styles.inputFlex}
+              placeholder="Confirm Password"
+              placeholderTextColor={colors.textSecondary}
+              secureTextEntry={!showConfirm}
+              value={confirmPassword}
+              onChangeText={setConfirmPassword}
+            />
+            <TouchableOpacity onPress={() => setShowConfirm((v) => !v)} style={styles.eyeButton}>
+              <Ionicons name={showConfirm ? "eye-off" : "eye"} size={20} color={colors.textSecondary} />
+            </TouchableOpacity>
+          </View>
           {confirmError ? <Text style={styles.fieldError}>{confirmError}</Text> : null}
         </View>
 
@@ -142,6 +155,21 @@ function createStyles(colors: Palette) {
     borderWidth: 1,
     borderColor: colors.border,
   },
+  inputRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    backgroundColor: colors.card,
+    borderRadius: radius.md,
+    borderWidth: 1,
+    borderColor: colors.border,
+  },
+  inputFlex: {
+    ...typography.body,
+    color: colors.text,
+    flex: 1,
+    padding: spacing.md,
+  },
+  eyeButton: { paddingHorizontal: spacing.md },
   fieldError: { ...typography.caption, color: colors.error, marginTop: spacing.xs },
   error: { ...typography.body, color: colors.error, marginBottom: spacing.md, textAlign: "center" },
   button: {

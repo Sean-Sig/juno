@@ -11,6 +11,7 @@ import {
 } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { useRouter } from "expo-router";
+import { Ionicons } from "@expo/vector-icons";
 import { useAuth } from "@juno/api";
 import { useTheme, spacing, typography, radius, type Palette } from "@juno/ui";
 
@@ -21,6 +22,7 @@ export default function LoginScreen() {
   const styles = useMemo(() => createStyles(colors), [colors]);
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
+  const [showPassword, setShowPassword] = useState(false);
   const [emailError, setEmailError] = useState("");
   const [passwordError, setPasswordError] = useState("");
   const [generalError, setGeneralError] = useState("");
@@ -75,14 +77,19 @@ export default function LoginScreen() {
         </View>
 
         <View style={styles.field}>
-          <TextInput
-            style={styles.input}
-            placeholder="Password"
-            placeholderTextColor={colors.textSecondary}
-            secureTextEntry
-            value={password}
-            onChangeText={setPassword}
-          />
+          <View style={styles.inputRow}>
+            <TextInput
+              style={styles.inputFlex}
+              placeholder="Password"
+              placeholderTextColor={colors.textSecondary}
+              secureTextEntry={!showPassword}
+              value={password}
+              onChangeText={setPassword}
+            />
+            <TouchableOpacity onPress={() => setShowPassword((v) => !v)} style={styles.eyeButton}>
+              <Ionicons name={showPassword ? "eye-off" : "eye"} size={20} color={colors.textSecondary} />
+            </TouchableOpacity>
+          </View>
           {passwordError ? <Text style={styles.fieldError}>{passwordError}</Text> : null}
         </View>
 
@@ -98,7 +105,11 @@ export default function LoginScreen() {
           )}
         </TouchableOpacity>
 
-        <TouchableOpacity onPress={() => router.push("/(auth)/register")}>
+        <TouchableOpacity onPress={() => router.push("/(auth)/forgot-password")}>
+          <Text style={styles.link}>Forgot password?</Text>
+        </TouchableOpacity>
+
+        <TouchableOpacity onPress={() => router.push("/(auth)/register")} style={styles.registerLink}>
           <Text style={styles.link}>Don't have an account? Register</Text>
         </TouchableOpacity>
       </KeyboardAvoidingView>
@@ -121,6 +132,21 @@ function createStyles(colors: Palette) {
     borderWidth: 1,
     borderColor: colors.border,
   },
+  inputRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    backgroundColor: colors.card,
+    borderRadius: radius.md,
+    borderWidth: 1,
+    borderColor: colors.border,
+  },
+  inputFlex: {
+    ...typography.body,
+    color: colors.text,
+    flex: 1,
+    padding: spacing.md,
+  },
+  eyeButton: { paddingHorizontal: spacing.md },
   fieldError: { ...typography.caption, color: colors.error, marginTop: spacing.xs },
   error: { ...typography.body, color: colors.error, marginBottom: spacing.md, textAlign: "center" },
   button: {
@@ -134,5 +160,6 @@ function createStyles(colors: Palette) {
   buttonDisabled: { opacity: 0.6 },
   buttonText: { ...typography.body, color: colors.card, fontWeight: "700" },
   link: { ...typography.body, color: colors.primary, textAlign: "center" },
+  registerLink: { marginTop: spacing.sm },
 });
 }
