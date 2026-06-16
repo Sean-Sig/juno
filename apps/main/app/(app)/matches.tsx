@@ -29,6 +29,16 @@ function playerName(player: TennisPlayer | null | undefined): string {
   return `${first} ${last}`.trim();
 }
 
+// Use backend-computed short_name ("C. Norrie"), fall back to full name
+// if short_name hasn't arrived yet (e.g. older cached responses).
+function playerShortName(player: TennisPlayer | null | undefined): string {
+  if (!player) return "";
+  if (player.short_name) return player.short_name;
+  const first = player.display_first_name ?? player.first_name ?? "";
+  const last = player.display_last_name ?? player.last_name ?? "";
+  return `${first} ${last}`.trim();
+}
+
 // Resolve a player: prefer the embedded object on the match, fall back to the
 // playerMap (populated via getTournamentPlayers + supplementary fetches).
 function resolvePlayer(
@@ -68,6 +78,25 @@ function isFinishedMatch(match: TennisMatch): boolean {
 function surfaceLabel(surface: string | null): string {
   if (!surface) return "";
   return surface.charAt(0).toUpperCase() + surface.slice(1).toLowerCase();
+}
+
+function surfaceAccentColor(surface: string | null): string {
+  switch (surface?.toLowerCase()) {
+    case "clay":    return "#C17A3A"; // terracotta
+    case "grass":   return "#3A8C4A"; // court green
+    case "hard":    return "#3A6FC1"; // hard court blue
+    case "carpet":  return "#7C5CBF"; // muted purple
+    case "indoor":  return "#5C7A8C"; // slate
+    default:        return "#888888"; // neutral fallback
+  }
+}
+
+function doublesLabel(type: string | null | undefined): string | null {
+  if (!type) return null;
+  const t = type.toUpperCase();
+  if (t === "XD" || t === "MX") return "Mixed Doubles";
+  if (["MD", "LD", "WD", "QD", "RD"].includes(t)) return "Doubles";
+  return null;
 }
 
 // ---------------------------------------------------------------------------
@@ -129,12 +158,51 @@ function matchPassesFilter(
 }
 
 // ---------------------------------------------------------------------------
-// Section type
+// Section / court grouping types
 // ---------------------------------------------------------------------------
+
+type CourtHeaderItem = { _courtHeader: true; court: string; id: string };
+type MatchListItem = TennisMatch | CourtHeaderItem;
+
+function isCourtHeader(item: MatchListItem): item is CourtHeaderItem {
+  return "_courtHeader" in item && item._courtHeader === true;
+}
+
+// Injects CourtHeaderItem sentinels between court groups.
+// Only activates when 2+ distinct non-null court values are present.
+function groupByCourt(matches: TennisMatch[]): MatchListItem[] {
+  const courts = new Set(matches.map((m) => m.court).filter(Boolean));
+  if (courts.size < 2) return matches;
+
+  const grouped = new Map<string, TennisMatch[]>();
+  const uncourted: TennisMatch[] = [];
+
+  for (const m of matches) {
+    if (m.court) {
+      if (!grouped.has(m.court)) grouped.set(m.court, []);
+      grouped.get(m.court)!.push(m);
+    } else {
+      uncourted.push(m);
+    }
+  }
+
+  const result: MatchListItem[] = [];
+  const sortedCourts = [...grouped.keys()].sort((a, b) => a.localeCompare(b, undefined, { numeric: true }));
+
+  for (const court of sortedCourts) {
+    result.push({ _courtHeader: true, court, id: `court-header-${court}` });
+    result.push(...grouped.get(court)!);
+  }
+  if (uncourted.length > 0) {
+    result.push({ _courtHeader: true, court: "Other", id: "court-header-other" });
+    result.push(...uncourted);
+  }
+  return result;
+}
 
 type TournamentSection = {
   tournament: TennisTournament;
-  data: TennisMatch[];
+  data: MatchListItem[];
 };
 
 // ---------------------------------------------------------------------------
@@ -319,7 +387,7 @@ export default function MatchesScreen() {
     for (const [tid, matches] of groupMap.entries()) {
       const t = tournamentMap.get(tid);
       if (!t) continue;
-      result.push({ tournament: t, data: matches });
+      result.push({ tournament: t, data: groupByCourt(matches) });
     }
     return result;
   }, [allMatches, statusTab, filter, tournamentMap, playerMap]);
@@ -343,7 +411,7 @@ export default function MatchesScreen() {
     });
   }
 
-  const totalMatches = sections.reduce((acc, s) => acc + s.data.length, 0);
+  const totalMatches = sections.reduce((acc, s) => acc + s.data.filter((i) => !isCourtHeader(i)).length, 0);
 
   const emptyMessage =
     statusTab === "live" ? "No matches live right now."
@@ -402,10 +470,10 @@ export default function MatchesScreen() {
         <SectionList
           sections={sections.map((s) => ({
             ...s,
-            totalCount: s.data.length,
+            totalCount: s.data.filter((i) => !isCourtHeader(i)).length,
             data: expandedIds.has(s.tournament.id) ? s.data : [],
           }))}
-          keyExtractor={(m) => m.id}
+          keyExtractor={(item) => isCourtHeader(item) ? item.id : item.id}
           contentContainerStyle={styles.listContent}
           stickySectionHeadersEnabled={false}
           refreshControl={
@@ -420,27 +488,41 @@ export default function MatchesScreen() {
               onToggle={() => toggleExpanded(section.tournament.id)}
             />
           )}
-          renderItem={({ item }) => (
-            <MatchCard
-              match={item}
-              playerMap={playerMap}
-              onPress={() => {
-                const p1 = resolvePlayer(item.player1, item.player1_id, playerMap);
-                const p2 = resolvePlayer(item.player2, item.player2_id, playerMap);
-                const tournamentName = tournamentMap.get(item.tournament_id)?.name;
-                router.push({
-                  pathname: `/match/${item.id}`,
-                  params: { p1Name: playerName(p1), p2Name: playerName(p2), tournamentName },
-                });
-              }}
-              onPlayerPress={(playerId) => {
-                router.push({
-                  pathname: `/(app)/player/${playerId}`,
-                  params: { teamId: TEAM_ID, from: "matches" },
-                });
-              }}
-            />
-          )}
+          ItemSeparatorComponent={({ leadingItem }) =>
+            isCourtHeader(leadingItem) ? null : <View style={styles.matchSeparator} />
+          }
+          renderItem={({ item }) => {
+            if (isCourtHeader(item)) {
+              return (
+                <View style={styles.courtHeader}>
+                  <Text style={styles.courtHeaderText}>{item.court}</Text>
+                  <View style={styles.courtHeaderRule} />
+                </View>
+              );
+            }
+            return (
+              <MatchCard
+                match={item}
+                playerMap={playerMap}
+                accentColor={surfaceAccentColor(tournamentMap.get(item.tournament_id)?.surface ?? null)}
+                onPress={() => {
+                  const p1 = resolvePlayer(item.player1, item.player1_id, playerMap);
+                  const p2 = resolvePlayer(item.player2, item.player2_id, playerMap);
+                  const tournamentName = tournamentMap.get(item.tournament_id)?.name;
+                  router.push({
+                    pathname: `/match/${item.id}`,
+                    params: { p1Name: playerName(p1), p2Name: playerName(p2), tournamentName },
+                  });
+                }}
+                onPlayerPress={(playerId) => {
+                  router.push({
+                    pathname: `/(app)/player/${playerId}`,
+                    params: { teamId: item.tournament_id, from: "matches" },
+                  });
+                }}
+              />
+            );
+          }}
           SectionSeparatorComponent={() => <View style={styles.sectionGap} />}
         />
       )}
@@ -480,6 +562,7 @@ function TournamentHeader({
   const rotate = rotation.interpolate({ inputRange: [0, 1], outputRange: ["-90deg", "0deg"] });
 
   const surface = surfaceLabel(tournament.surface);
+  const accentColor = surfaceAccentColor(tournament.surface);
   const dateRange = (() => {
     if (tournament.start_date && tournament.end_date) {
       return `${formatDate(tournament.start_date)} – ${formatDate(tournament.end_date)}`;
@@ -490,7 +573,7 @@ function TournamentHeader({
 
   return (
     <TouchableOpacity
-      style={styles.tournamentHeader}
+      style={[styles.tournamentHeader, { borderLeftColor: accentColor }]}
       onPress={onToggle}
       activeOpacity={0.7}
     >
@@ -506,7 +589,7 @@ function TournamentHeader({
         </Animated.View>
       </View>
       <View style={styles.tournamentMeta}>
-        {surface ? <Text style={styles.tournamentMetaText}>{surface}</Text> : null}
+        {surface ? <Text style={[styles.tournamentMetaText, { color: accentColor, fontWeight: "600" }]}>{surface}</Text> : null}
         {surface && dateRange ? <Text style={styles.tournamentMetaDot}>·</Text> : null}
         {dateRange ? <Text style={styles.tournamentMetaText}>{dateRange}</Text> : null}
       </View>
@@ -521,11 +604,13 @@ function TournamentHeader({
 function MatchCard({
   match,
   playerMap,
+  accentColor,
   onPress,
   onPlayerPress,
 }: {
   match: TennisMatch;
   playerMap: Map<string, TennisPlayer>;
+  accentColor: string;
   onPress: () => void;
   onPlayerPress: (playerId: string) => void;
 }) {
@@ -538,13 +623,13 @@ function MatchCard({
   // Prefer embedded player objects (API changelog); fall back to playerMap
   // (populated via getTournamentPlayers + supplementary fetches) so names
   // always resolve regardless of whether the backend has deployed embedding.
-  const p1Name        = match.player1_id ? (playerName(resolvePlayer(match.player1, match.player1_id, playerMap)) || "…") : "TBD";
-  const p1PartnerName = match.player1_partner_id ? (playerName(resolvePlayer(match.player1_partner, match.player1_partner_id, playerMap)) || null) : null;
-  const p2Name        = match.player2_id ? (playerName(resolvePlayer(match.player2, match.player2_id, playerMap)) || "…") : "TBD";
-  const p2PartnerName = match.player2_partner_id ? (playerName(resolvePlayer(match.player2_partner, match.player2_partner_id, playerMap)) || null) : null;
+  const p1Name        = match.player1_id ? (playerShortName(resolvePlayer(match.player1, match.player1_id, playerMap)) || "…") : "TBD";
+  const p1PartnerName = match.player1_partner_id ? (playerShortName(resolvePlayer(match.player1_partner, match.player1_partner_id, playerMap)) || null) : null;
+  const p2Name        = match.player2_id ? (playerShortName(resolvePlayer(match.player2, match.player2_id, playerMap)) || "…") : "TBD";
+  const p2PartnerName = match.player2_partner_id ? (playerShortName(resolvePlayer(match.player2_partner, match.player2_partner_id, playerMap)) || null) : null;
 
   return (
-    <TouchableOpacity style={[styles.card, live && styles.cardLive]} onPress={onPress} activeOpacity={0.7}>
+    <TouchableOpacity style={[styles.card, { borderLeftColor: accentColor }]} onPress={onPress} activeOpacity={0.7}>
 
       {/* Live capsule — absolute top-left corner */}
       {live && (
@@ -570,18 +655,20 @@ function MatchCard({
               {match.court ? <Text style={styles.statusDetail}>· {match.court}</Text> : null}
             </>
           )}
-          {match.round && !/^\d+$/.test(match.round) ? <Text style={styles.roundBadge}>{match.round}</Text> : null}
-          {!match.round && match.type && !/^\d+$/.test(match.type) ? <Text style={styles.roundBadge}>{match.type}</Text> : null}
+          <View style={styles.statusBadgeGroup}>
+            {match.round && !/^\d+$/.test(match.round) ? <Text style={styles.roundBadge}>{match.round}</Text> : null}
+            {doublesLabel(match.type) ? <Text style={styles.doublesBadge}>{doublesLabel(match.type)}</Text> : null}
+          </View>
         </View>
       )}
 
-      {/* Round badge sits top-right when live (only show human-readable labels) */}
-      {live && (() => {
-        const label = match.round ?? match.type;
-        return label && !/^\d+$/.test(label)
-          ? <Text style={styles.roundBadgeLive}>{label}</Text>
-          : null;
-      })()}
+      {/* Round + doubles badge top-right when live */}
+      {live && (
+        <View style={styles.liveBadgeRow}>
+          {doublesLabel(match.type) ? <Text style={styles.doublesBadgeLive}>{doublesLabel(match.type)}</Text> : null}
+          {match.round && !/^\d+$/.test(match.round) ? <Text style={styles.roundBadgeLive}>{match.round}</Text> : null}
+        </View>
+      )}
 
       {/* Score grid — one row per team so doubles partners stack naturally */}
       <View style={[styles.scoreGrid, live && styles.scoreGridLive]}>
@@ -610,9 +697,14 @@ function MatchCard({
                   activeOpacity={0.6}
                   hitSlop={{ top: 4, bottom: 4, left: 0, right: 0 }}
                 >
-                  <Text style={[styles.playerName, isWinner && styles.playerWon, isLoser && styles.playerLost]} numberOfLines={1}>
-                    {mainName}
-                  </Text>
+                  <View style={styles.playerNameRow}>
+                    <Text style={[styles.playerName, isWinner && styles.playerWon, isLoser && styles.playerLost]} numberOfLines={1}>
+                      {mainName}
+                    </Text>
+                    {isWinner && (
+                      <Ionicons name="checkmark-circle" size={14} color={colors.primary} style={styles.winnerIcon} />
+                    )}
+                  </View>
                 </TouchableOpacity>
                 {partnerName && (
                   <TouchableOpacity
@@ -630,8 +722,8 @@ function MatchCard({
 
               {/* Set scores for this team */}
               {(match.sets ?? []).map((set, i) => {
-                const myGames  = set[String(team) as "1" | "2"].games;
-                const oppGames = set[opp as "1" | "2"].games;
+                const myGames  = set[String(team) as "1" | "2"].games ?? 0;
+                const oppGames = set[opp as "1" | "2"].games ?? 0;
                 const myTb     = set[String(team) as "1" | "2"].tiebreak;
                 const wonSet   = myGames > oppGames;
                 const lostSet  = myGames < oppGames;
@@ -645,11 +737,25 @@ function MatchCard({
                 );
               })}
 
+              {/* Sets won total — shown when there is set data */}
+              {(match.sets ?? []).length > 0 && (() => {
+                const setsWon = (match.sets ?? []).filter(
+                  (set) => (set[String(team) as "1" | "2"].games ?? 0) > (set[opp as "1" | "2"].games ?? 0)
+                ).length;
+                return (
+                  <View style={[styles.setScoreCell, styles.setsWonCell]}>
+                    <Text style={[styles.setGames, isWinner && styles.setGamesWon, isLoser && styles.setGamesLost]}>
+                      {setsWon}
+                    </Text>
+                  </View>
+                );
+              })()}
+
               {/* Live game score for this team */}
               {live && match.live && (
                 <View style={[styles.setScoreCell, styles.gameScoreCell]}>
                   <Text style={styles.gameScore}>
-                    {team === 1 ? (match.live.game_score_1 ?? "") : (match.live.game_score_2 ?? "")}
+                    {team === 1 ? (match.live.game_score_1 || "0") : (match.live.game_score_2 || "0")}
                   </Text>
                 </View>
               )}
@@ -727,9 +833,11 @@ function createStyles(colors: Palette) {
 
     // Tournament section header
     tournamentHeader: {
-      paddingHorizontal: spacing.sm,
+      paddingLeft: spacing.md,
+      paddingRight: spacing.sm,
       paddingTop: spacing.sm,
       paddingBottom: spacing.xs,
+      borderLeftWidth: 4,
     },
     tournamentHeaderRow: {
       flexDirection: "row",
@@ -756,15 +864,42 @@ function createStyles(colors: Palette) {
       backgroundColor: colors.card,
       borderRadius: radius.md,
       padding: spacing.md,
-      marginTop: spacing.xs,
+      borderLeftWidth: 3,
+      borderTopWidth: 0.5,
+      borderRightWidth: 0.5,
+      borderBottomWidth: 1,
+      borderLeftColor: colors.divider,
+      borderTopColor: colors.divider,
+      borderRightColor: colors.divider,
+      borderBottomColor: colors.divider,
       shadowColor: "#000",
-      shadowOpacity: 0.05,
-      shadowRadius: 4,
-      elevation: 2,
+      shadowOpacity: 0.04,
+      shadowRadius: 3,
+      elevation: 1,
       overflow: "hidden",
     },
-    cardLive: {
-      // no left border — capsule handles the live signal
+    matchSeparator: {
+      height: spacing.sm,
+    },
+    courtHeader: {
+      flexDirection: "row",
+      alignItems: "center",
+      gap: spacing.sm,
+      marginTop: spacing.md,
+      marginBottom: spacing.xs,
+    },
+    courtHeaderText: {
+      ...typography.caption,
+      color: colors.textSecondary,
+      fontWeight: "700",
+      letterSpacing: 0.6,
+      textTransform: "uppercase",
+      flexShrink: 0,
+    },
+    courtHeaderRule: {
+      flex: 1,
+      height: StyleSheet.hairlineWidth,
+      backgroundColor: colors.divider,
     },
 
     // Live capsule — absolute top-left
@@ -793,12 +928,27 @@ function createStyles(colors: Palette) {
       color: "#fff",
       letterSpacing: 0.4,
     },
+    liveBadgeRow: {
+      flexDirection: "row",
+      alignItems: "center",
+      justifyContent: "flex-end",
+      gap: 6,
+      marginBottom: spacing.xs,
+    },
     roundBadgeLive: {
       ...typography.caption,
       color: colors.textSecondary,
       fontWeight: "600",
-      textAlign: "right",
-      marginBottom: spacing.xs,
+    },
+    doublesBadge: {
+      ...typography.caption,
+      color: colors.primary,
+      fontWeight: "600",
+    },
+    doublesBadgeLive: {
+      ...typography.caption,
+      color: colors.primary,
+      fontWeight: "600",
     },
 
     // Status row (non-live)
@@ -811,10 +961,15 @@ function createStyles(colors: Palette) {
     finalText: { ...typography.caption, color: colors.textSecondary, fontWeight: "600" },
     scheduleText: { ...typography.caption, color: colors.textSecondary },
     statusDetail: { ...typography.caption, color: colors.textSecondary },
+    statusBadgeGroup: {
+      flexDirection: "row",
+      alignItems: "center",
+      marginLeft: "auto",
+      gap: 6,
+    },
     roundBadge: {
       ...typography.caption,
       color: colors.textSecondary,
-      marginLeft: "auto",
       fontWeight: "600",
     },
 
@@ -841,7 +996,9 @@ function createStyles(colors: Palette) {
 
     // Names column
     teamNames: { flex: 1, gap: 2 },
-    playerName: { ...typography.body, color: colors.text },
+    playerNameRow: { flexDirection: "row", alignItems: "center", gap: 4 },
+    winnerIcon: { flexShrink: 0 },
+    playerName: { ...typography.body, color: colors.text, flexShrink: 1 },
     partnerName: { ...typography.caption, color: colors.textSecondary, fontWeight: "500" },
     playerWon:  { fontWeight: "700", color: colors.text },
     playerLost: { color: colors.textSecondary },
@@ -867,6 +1024,14 @@ function createStyles(colors: Palette) {
       color: colors.textSecondary,
       lineHeight: 12,
       marginTop: 1,
+    },
+
+    // Sets won total cell (rightmost on finished cards, separated by hairline)
+    setsWonCell: {
+      borderLeftWidth: StyleSheet.hairlineWidth,
+      borderLeftColor: colors.border,
+      paddingLeft: 8,
+      minWidth: 20,
     },
 
     // Live game score cell (rightmost, separated by hairline)

@@ -4,6 +4,7 @@ export type TennisPlayer = {
   last_name: string;
   display_first_name: string | null;
   display_last_name: string | null;
+  short_name: string | null;
   country: string | null;
   photo: string | null;
   gender: string | null;

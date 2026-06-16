@@ -1,4 +1,5 @@
 export { PlayerCard } from "./PlayerCard";
+export { countryFlag } from "./countryFlag";
 export { LiveBadge } from "./LiveBadge";
 export { Skeleton, SkeletonCard } from "./Skeleton";
 export { TopAppBar } from "./TopAppBar";

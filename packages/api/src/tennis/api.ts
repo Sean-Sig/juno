@@ -63,6 +63,12 @@ export const tennis = {
     return apiFetch<{ data: TennisMatch | null }>(`/api/v4/tennis/players/recent_match?player_id=${playerId}`);
   },
 
+  getPlayerMatches(playerId: string, tournamentId: string) {
+    return apiFetch<{ data: TennisMatch[] }>(
+      `/api/v4/tennis/players/${playerId}/matches?tournament_id=${tournamentId}`
+    );
+  },
+
   getCountries() {
     return apiFetch<{ data: string[] }>("/api/v4/tennis/countries");
   },

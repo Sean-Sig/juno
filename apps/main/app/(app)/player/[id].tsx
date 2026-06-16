@@ -123,23 +123,26 @@ export default function PlayerScreen() {
       .catch(() => {});
   }, [id, activeSport]);
 
-  // Fetch tennis tournament scorecard when teamId is provided
+  // Fetch this player's matches for the current tournament
   useEffect(() => {
     if (activeSport !== "tennis" || !id || !teamId) return;
-    Promise.all([
-      tennis.getTournamentMatches(teamId),
-      tennis.getTournamentPlayers(teamId),
-    ]).then(([{ data: matchData }, { data: playerData }]) => {
-      const map = new Map<string, TennisPlayer>();
-      for (const p of playerData) map.set(p.id, p);
-      setPlayerMap(map);
-      // Filter to matches involving this player and sort by round
-      const mine = matchData.filter(
-        (m) => m.player1_id === id || m.player2_id === id
-      );
-      mine.sort((a, b) => (ROUND_ORDER[a.round ?? ""] ?? 99) - (ROUND_ORDER[b.round ?? ""] ?? 99));
-      setTournamentMatches(mine);
-    }).catch(() => {});
+    tennis.getPlayerMatches(id, teamId)
+      .then(({ data }) => {
+        const sorted = [...data].sort(
+          (a, b) => (ROUND_ORDER[a.round ?? ""] ?? 99) - (ROUND_ORDER[b.round ?? ""] ?? 99)
+        );
+        // Build playerMap from embedded player objects
+        const map = new Map<string, TennisPlayer>();
+        for (const m of data) {
+          if (m.player1) map.set(m.player1_id!, m.player1);
+          if (m.player2) map.set(m.player2_id!, m.player2);
+          if (m.player1_partner) map.set(m.player1_partner_id!, m.player1_partner);
+          if (m.player2_partner) map.set(m.player2_partner_id!, m.player2_partner);
+        }
+        setPlayerMap(map);
+        setTournamentMatches(sorted);
+      })
+      .catch(() => {});
   }, [id, activeSport, teamId]);
 
   async function toggleFollow() {

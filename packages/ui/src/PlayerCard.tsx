@@ -4,6 +4,7 @@ import { Ionicons } from "@expo/vector-icons";
 import { useTheme } from "./ThemeProvider";
 import type { Palette } from "./theme";
 import { spacing, radius, typography } from "./theme";
+import { countryFlag } from "./countryFlag";
 
 type Props = {
   firstName: string;
@@ -30,28 +31,30 @@ export function PlayerCard({
 }: Props) {
   const { colors } = useTheme();
   const styles = useMemo(() => createStyles(colors), [colors]);
+  const flag = countryFlag(country);
 
   return (
     <TouchableOpacity style={styles.container} onPress={onPress} activeOpacity={0.7}>
-      {photo ? (
-        <Image source={{ uri: photo }} style={styles.photo} />
-      ) : (
-        <View style={styles.photoPlaceholder}>
-          <Text style={styles.initials}>
-            {firstName[0]}{lastName[0]}
-          </Text>
-        </View>
-      )}
+      <View style={styles.photoWrapper}>
+        {photo ? (
+          <Image source={{ uri: photo }} style={styles.photo} />
+        ) : (
+          <View style={styles.photoPlaceholder}>
+            <Text style={styles.initials}>
+              {firstName[0]}{lastName[0]}
+            </Text>
+          </View>
+        )}
+        {flag && (
+          <Text style={styles.flagBadge}>{flag}</Text>
+        )}
+      </View>
       <View style={styles.info}>
         <Text style={styles.name}>{firstName} {lastName}</Text>
-        {country && <Text style={styles.country}>{country}</Text>}
+        {rank != null && (
+          <Text style={styles.rankLabel}>{rankLabel} <Text style={styles.rankValue}>#{rank}</Text></Text>
+        )}
       </View>
-      {rank != null && (
-        <View style={styles.rankBadge}>
-          <Text style={styles.rankLabel}>{rankLabel}</Text>
-          <Text style={styles.rankValue}>#{rank}</Text>
-        </View>
-      )}
       {onToggleFollow && (
         <TouchableOpacity
           style={styles.followButton}
@@ -62,9 +65,9 @@ export function PlayerCard({
           hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
         >
           <Ionicons
-            name={following ? "star" : "star-outline"}
-            size={22}
-            color={following ? colors.secondary : colors.textSecondary}
+            name={following ? "checkmark-circle" : "add-circle-outline"}
+            size={26}
+            color={colors.primary}
           />
         </TouchableOpacity>
       )}
@@ -86,11 +89,15 @@ function createStyles(colors: Palette) {
       shadowRadius: 4,
       elevation: 2,
     },
+    photoWrapper: {
+      width: 48,
+      height: 48,
+      marginRight: spacing.md,
+    },
     photo: {
       width: 48,
       height: 48,
       borderRadius: radius.full,
-      marginRight: spacing.md,
     },
     photoPlaceholder: {
       width: 48,
@@ -99,7 +106,13 @@ function createStyles(colors: Palette) {
       backgroundColor: colors.border,
       alignItems: "center",
       justifyContent: "center",
-      marginRight: spacing.md,
+    },
+    flagBadge: {
+      position: "absolute",
+      bottom: -2,
+      right: -4,
+      fontSize: 14,
+      lineHeight: 16,
     },
     initials: {
       ...typography.label,
@@ -112,21 +125,15 @@ function createStyles(colors: Palette) {
       ...typography.h3,
       color: colors.text,
     },
-    country: {
+    rankLabel: {
       ...typography.caption,
       color: colors.textSecondary,
       marginTop: 2,
     },
-    rankBadge: {
-      alignItems: "center",
-    },
-    rankLabel: {
-      ...typography.caption,
-      color: colors.textSecondary,
-    },
     rankValue: {
-      ...typography.label,
+      ...typography.caption,
       color: colors.primary,
+      fontWeight: "600",
     },
     followButton: {
       marginLeft: spacing.sm,
