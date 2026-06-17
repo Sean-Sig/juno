@@ -14,6 +14,7 @@ import { useSport, ALL_SPORTS, type Sport } from "@juno/api";
 import { useTheme, spacing, radius, typography, type Palette } from "@juno/ui";
 import { FollowedPlayersProvider } from "../../context/FollowedPlayersContext";
 import { ScoutCreditsProvider, useScoutCredits } from "../../context/ScoutCreditsContext";
+import { ScoutLineupProvider } from "../../context/ScoutLineupContext";
 import { CreditSheet } from "../../components/CreditSheet";
 
 const SPORT_META: Record<Sport, { label: string; emoji: string }> = {
@@ -108,7 +109,7 @@ const meta = SPORT_META[activeSport];
 
             <TouchableOpacity
               style={styles.actionRow}
-              onPress={() => { closeSheet(); router.push("/(app)/sport-settings"); }}
+              onPress={() => { closeSheet(); router.push("/(app)/sport-settings?from=switcher"); }}
             >
               <Ionicons name="settings-outline" size={16} color={colors.textSecondary} />
               <Text style={styles.actionText}>Manage followed sports</Text>
@@ -172,6 +173,7 @@ export default function AppLayout() {
 
   return (
     <FollowedPlayersProvider>
+    <ScoutLineupProvider>
     <ScoutCreditsProvider>
     <CreditSheet />
     <Tabs
@@ -229,21 +231,21 @@ export default function AppLayout() {
         }}
       />
 
-      {/* Tab 2 — Rankings / Standings */}
+      {/* Tab 2 — Scout */}
+      <Tabs.Screen
+        name="scout"
+        options={{
+          title: "Scout",
+          tabBarIcon: ({ color, size }) => <Ionicons name="sparkles" color={color} size={size} />,
+        }}
+      />
+
+      {/* Tab 3 — Rankings / Standings */}
       <Tabs.Screen
         name="rankings"
         options={{
           title: "Rankings",
           tabBarIcon: ({ color, size }) => <Ionicons name="podium" color={color} size={size} />,
-        }}
-      />
-
-      {/* Tab 3 — Scout */}
-      <Tabs.Screen
-        name="scout"
-        options={{
-          title: "Scout",
-          tabBarIcon: ({ color, size }) => <Ionicons name="telescope-outline" color={color} size={size} />,
         }}
       />
 
@@ -257,11 +259,13 @@ export default function AppLayout() {
       />
       <Tabs.Screen name="player/[id]" options={{ href: null, title: "Player" }} />
       <Tabs.Screen name="match/[id]" options={{ href: null, title: "Match" }} />
+      <Tabs.Screen name="match/h2h/[id]" options={{ href: null, title: "Head to Head" }} />
       <Tabs.Screen name="game/[id]" options={{ href: null, title: "Game" }} />
       <Tabs.Screen name="scorecard" options={{ href: null, title: "Scorecard" }} />
       <Tabs.Screen name="sport-settings" options={{ href: null, title: "Followed Sports" }} />
     </Tabs>
     </ScoutCreditsProvider>
+    </ScoutLineupProvider>
     </FollowedPlayersProvider>
   );
 }

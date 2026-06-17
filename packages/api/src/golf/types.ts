@@ -122,6 +122,7 @@ export type GolfTournament = {
   year: number | null;
   tour: Record<string, string> | null;
   tournament_type: string;
+  tier: string | null;
   prize_money: number | null;
   prize_currency: string | null;
   cut: number | null;

@@ -13,13 +13,18 @@ import {
   Easing,
   FlatList,
   Image,
+  SectionList,
 } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { Ionicons } from "@expo/vector-icons";
-import { tennis, scout, useAuth, type TennisPlayer, type ScoutResult, type PlayerScore } from "@juno/api";
+import { useRouter } from "expo-router";
+import { tennis, scout, useAuth, type TennisPlayer, type ScoutResult, type PlayerScore, type UpcomingMatchup } from "@juno/api";
 import { useTheme, spacing, radius, typography, type Palette } from "@juno/ui";
 import { useFollowedPlayers } from "../context/FollowedPlayersContext";
 import { useScoutCredits } from "../context/ScoutCreditsContext";
+import { useScoutLineup } from "../context/ScoutLineupContext";
+
+type ScoutMode = "lineup" | "matchups";
 
 // ---------------------------------------------------------------------------
 // Animated score circle — arc fills clockwise, remainder stays gray
@@ -418,6 +423,145 @@ function PlayerSearch({
 }
 
 // ---------------------------------------------------------------------------
+// Matchups tab
+// ---------------------------------------------------------------------------
+
+function surfaceAccentColor(surface: string | null | undefined): string {
+  switch (surface?.toLowerCase()) {
+    case "clay":    return "#C17A3A";
+    case "grass":   return "#3A8C4A";
+    case "hard":    return "#3A6FC1";
+    case "carpet":  return "#7C5CBF";
+    default:        return "#888888";
+  }
+}
+
+function formatMatchTime(startsAt: string | null): string {
+  if (!startsAt) return "TBD";
+  try {
+    return new Date(startsAt).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
+  } catch {
+    return "TBD";
+  }
+}
+
+type MatchupSection = {
+  tournament: string;
+  surface: string | null;
+  tier: string | null;
+  data: UpcomingMatchup[];
+};
+
+function groupByTournament(matchups: UpcomingMatchup[]): MatchupSection[] {
+  const map = new Map<string, MatchupSection>();
+  for (const m of matchups) {
+    const key = m.tournament_name ?? "Unknown Tournament";
+    if (!map.has(key)) {
+      map.set(key, { tournament: key, surface: m.surface, tier: m.tier, data: [] });
+    }
+    map.get(key)!.data.push(m);
+  }
+  return Array.from(map.values());
+}
+
+function MatchupsTab({ colors, styles }: { colors: Palette; styles: ReturnType<typeof createStyles> }) {
+  const router = useRouter();
+  const [matchups, setMatchups] = useState<UpcomingMatchup[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+
+  useEffect(() => {
+    tennis.getUpcomingMatchups()
+      .then(({ data }) => setMatchups(data))
+      .catch(() => setError("Failed to load upcoming matches."))
+      .finally(() => setLoading(false));
+  }, []);
+
+  if (loading) {
+    return <ActivityIndicator color={colors.primary} style={{ marginTop: spacing.xl }} />;
+  }
+
+  if (error) {
+    return <Text style={[styles.error, { color: colors.error ?? "#E05252", textAlign: "center", marginTop: spacing.lg }]}>{error}</Text>;
+  }
+
+  if (matchups.length === 0) {
+    return (
+      <View style={{ alignItems: "center", paddingTop: spacing.xl }}>
+        <Ionicons name="calendar-outline" size={40} color={colors.textSecondary} />
+        <Text style={[{ ...typography.body, color: colors.textSecondary, marginTop: spacing.md, textAlign: "center" }]}>
+          No upcoming matches scheduled{"\n"}for the next 7 days.
+        </Text>
+      </View>
+    );
+  }
+
+  const sections = groupByTournament(matchups);
+
+  return (
+    <SectionList
+      sections={sections}
+      keyExtractor={(item) => item.id}
+      contentContainerStyle={{ paddingBottom: spacing.xl }}
+      stickySectionHeadersEnabled={false}
+      renderSectionHeader={({ section }) => {
+        const accent = surfaceAccentColor(section.surface);
+        return (
+          <View style={[styles.matchupSectionHeader, { borderLeftColor: accent }]}>
+            <Text style={[styles.matchupTournamentName, { color: colors.text }]} numberOfLines={1}>
+              {section.tournament}
+            </Text>
+            {section.surface && (
+              <Text style={[styles.matchupSurface, { color: accent }]}>{section.surface}</Text>
+            )}
+          </View>
+        );
+      }}
+      renderItem={({ item: m }) => {
+        const accent = surfaceAccentColor(m.surface);
+        const p1 = m.player1;
+        const p2 = m.player2;
+        return (
+          <TouchableOpacity
+            style={[styles.matchupCard, { borderLeftColor: accent }]}
+            onPress={() => router.push(`/(app)/match/h2h/${m.id}?from=scout`)}
+            activeOpacity={0.75}
+          >
+            <View style={styles.matchupPlayers}>
+              <View style={styles.matchupPlayer}>
+                <Text style={[styles.matchupPlayerName, { color: colors.text }]} numberOfLines={1}>
+                  {p1?.short_name ?? p1?.name ?? "TBD"}
+                </Text>
+                {p1?.singles_rank && (
+                  <Text style={[styles.matchupRank, { color: colors.textSecondary }]}>#{p1.singles_rank}</Text>
+                )}
+              </View>
+              <Text style={[styles.matchupVs, { color: colors.textSecondary }]}>vs</Text>
+              <View style={[styles.matchupPlayer, styles.matchupPlayerRight]}>
+                <Text style={[styles.matchupPlayerName, { color: colors.text, textAlign: "right" }]} numberOfLines={1}>
+                  {p2?.short_name ?? p2?.name ?? "TBD"}
+                </Text>
+                {p2?.singles_rank && (
+                  <Text style={[styles.matchupRank, { color: colors.textSecondary, textAlign: "right" }]}>#{p2.singles_rank}</Text>
+                )}
+              </View>
+            </View>
+            <View style={styles.matchupMeta}>
+              <Text style={[styles.matchupTime, { color: colors.textSecondary }]}>{formatMatchTime(m.starts_at)}</Text>
+              {m.round && <Text style={[styles.matchupRound, { color: colors.textSecondary }]}>· {m.round}</Text>}
+              <View style={{ flex: 1 }} />
+              <Ionicons name="chevron-forward" size={14} color={colors.textSecondary} />
+            </View>
+          </TouchableOpacity>
+        );
+      }}
+      ItemSeparatorComponent={() => <View style={{ height: StyleSheet.hairlineWidth, backgroundColor: colors.divider, marginLeft: spacing.md }} />}
+      SectionSeparatorComponent={() => <View style={{ height: spacing.md }} />}
+    />
+  );
+}
+
+// ---------------------------------------------------------------------------
 // Main screen
 // ---------------------------------------------------------------------------
 export default function TennisScout() {
@@ -426,13 +570,23 @@ export default function TennisScout() {
   const styles = useMemo(() => createStyles(colors), [colors]);
 
   const { credits, setCredits, refreshCredits, openSheet } = useScoutCredits();
+  const { pendingPlayer, clearPending } = useScoutLineup();
 
+  const [mode, setMode] = useState<ScoutMode>("matchups");
   const [players, setPlayers] = useState<TennisPlayer[]>([]);
   const [result, setResult] = useState<ScoutResult | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
   const MAX_PLAYERS = 5;
+
+  // When a player is queued from the Player screen, add them and switch to Lineup
+  useEffect(() => {
+    if (!pendingPlayer) return;
+    addPlayer(pendingPlayer);
+    setMode("lineup");
+    clearPending();
+  }, [pendingPlayer]);
 
   function addPlayer(p: TennisPlayer) {
     if (players.find((x) => x.id === p.id)) return;
@@ -475,9 +629,31 @@ export default function TennisScout() {
 
   return (
     <SafeAreaView style={styles.container} edges={["left", "right"]}>
+
+      {/* ── Segmented control ── */}
+      <View style={[styles.segmentedControl, { borderColor: colors.divider, backgroundColor: colors.surface }]}>
+        {(["matchups", "lineup"] as ScoutMode[]).map((tab) => (
+          <TouchableOpacity
+            key={tab}
+            style={[styles.segmentBtn, mode === tab && { backgroundColor: colors.primary }]}
+            onPress={() => setMode(tab)}
+            activeOpacity={0.8}
+          >
+            <Text style={[styles.segmentBtnText, { color: mode === tab ? "#fff" : colors.textSecondary }]}>
+              {tab === "matchups" ? "Matchups" : "Lineup"}
+            </Text>
+          </TouchableOpacity>
+        ))}
+      </View>
+
+      {/* ── Matchups tab ── */}
+      {mode === "matchups" && <MatchupsTab colors={colors} styles={styles} />}
+
+      {/* ── Lineup tab ── */}
+      {mode === "lineup" && (
       <ScrollView contentContainerStyle={styles.scroll} keyboardShouldPersistTaps="handled">
 
-        <Text style={styles.heading}>Scout</Text>
+        <Text style={styles.heading}>Lineup Analysis</Text>
         <Text style={styles.subheading}>Add players, then let AI score the lineup.</Text>
 
         {/* Search / add row */}
@@ -587,6 +763,8 @@ export default function TennisScout() {
           </>
         )}
       </ScrollView>
+      )}
+
     </SafeAreaView>
   );
 }
@@ -711,7 +889,55 @@ function createStyles(colors: Palette) {
       borderWidth: 1,
     },
     resetBtnText: { ...typography.label },
-    error: { ...typography.body, textAlign: "center", marginBottom: spacing.md },
+    error: { ...typography.body, marginBottom: spacing.md },
+
+    // Segmented control
+    segmentedControl: {
+      flexDirection: "row",
+      margin: spacing.md,
+      marginBottom: 0,
+      borderRadius: radius.md,
+      borderWidth: 1,
+      overflow: "hidden",
+    },
+    segmentBtn: {
+      flex: 1,
+      paddingVertical: 9,
+      alignItems: "center",
+    },
+    segmentBtnText: { ...typography.label, fontWeight: "700" },
+
+    // Matchups list
+    matchupSectionHeader: {
+      borderLeftWidth: 3,
+      paddingLeft: spacing.sm,
+      marginHorizontal: spacing.md,
+      marginTop: spacing.md,
+      marginBottom: spacing.xs,
+    },
+    matchupTournamentName: { ...typography.label, fontWeight: "700" },
+    matchupSurface: { ...typography.caption, fontWeight: "600", marginTop: 1 },
+    matchupCard: {
+      marginHorizontal: spacing.md,
+      paddingHorizontal: spacing.md,
+      paddingVertical: spacing.sm,
+      borderLeftWidth: 3,
+      backgroundColor: "transparent",
+    },
+    matchupPlayers: {
+      flexDirection: "row",
+      alignItems: "center",
+      gap: spacing.xs,
+      marginBottom: 4,
+    },
+    matchupPlayer: { flex: 1 },
+    matchupPlayerRight: { alignItems: "flex-end" },
+    matchupPlayerName: { ...typography.body, fontWeight: "600" },
+    matchupRank: { ...typography.caption },
+    matchupVs: { ...typography.caption, fontWeight: "700", paddingHorizontal: 4 },
+    matchupMeta: { flexDirection: "row", alignItems: "center", gap: 4 },
+    matchupTime: { ...typography.caption },
+    matchupRound: { ...typography.caption },
 
     // Sheet
     backdrop: { flex: 1, backgroundColor: "rgba(0,0,0,0.45)", justifyContent: "flex-end" },

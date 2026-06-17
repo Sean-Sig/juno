@@ -9,6 +9,9 @@ import {
   TouchableOpacity,
   ScrollView,
   Animated,
+  TextInput,
+  KeyboardAvoidingView,
+  Platform,
 } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
 import { SafeAreaView } from "react-native-safe-area-context";
@@ -89,6 +92,27 @@ function surfaceAccentColor(surface: string | null): string {
     case "indoor":  return "#5C7A8C"; // slate
     default:        return "#888888"; // neutral fallback
   }
+}
+
+function tierLabel(tier: string | null | undefined): string | null {
+  if (!tier) return null;
+  const map: Record<string, string> = {
+    grand_slam:    "Grand Slam",
+    masters_1000:  "Masters 1000",
+    atp_500:       "ATP 500",
+    atp_250:       "ATP 250",
+    wta_1000:      "WTA 1000",
+    wta_500:       "WTA 500",
+    wta_250:       "WTA 250",
+    itf_davis_cup: "Davis Cup",
+    major:         "Major",
+    pga_tour:      "PGA Tour",
+    liv_golf:      "LIV Golf",
+    dp_world_tour: "DP World Tour",
+    lpga:          "LPGA",
+    champions:     "Champions Tour",
+  };
+  return map[tier] ?? tier.replace(/_/g, " ").replace(/\b\w/g, (c) => c.toUpperCase());
 }
 
 function doublesLabel(type: string | null | undefined): string | null {
@@ -219,6 +243,7 @@ export default function MatchesScreen() {
   const [refreshing, setRefreshing] = useState(false);
   const [statusTab, setStatusTab] = useState<StatusTab>("live");
   const [filter, setFilter] = useState<FilterType>("all");
+  const [query, setQuery] = useState("");
   const [expandedIds, setExpandedIds] = useState<Set<string>>(new Set());
   const initialAutoSwitch = useRef(true);
   const router = useRouter();
@@ -365,8 +390,9 @@ export default function MatchesScreen() {
     if (statusTab === "live") {
       filtered = allMatches.filter(isLiveMatch);
     } else if (statusTab === "upcoming") {
+      const cutoff = new Date(Date.now() - 2 * 60 * 60 * 1000).toISOString(); // 2h ago
       filtered = allMatches
-        .filter((m) => !isLiveMatch(m) && !isFinishedMatch(m))
+        .filter((m) => !isLiveMatch(m) && !isFinishedMatch(m) && (m.starts_at == null || m.starts_at >= cutoff))
         .sort((a, b) => (a.starts_at ?? "").localeCompare(b.starts_at ?? ""));
     } else {
       filtered = allMatches
@@ -374,6 +400,19 @@ export default function MatchesScreen() {
         .sort((a, b) => (b.finished_at ?? "").localeCompare(a.finished_at ?? ""));
     }
     filtered = filtered.filter((m) => matchPassesFilter(m, filter, playerMap));
+
+    // Player name search
+    const q = query.trim().toLowerCase();
+    if (q.length > 0) {
+      filtered = filtered.filter((m) => {
+        const p1 = resolvePlayer(m.player1, m.player1_id, playerMap);
+        const p2 = resolvePlayer(m.player2, m.player2_id, playerMap);
+        return (
+          playerName(p1).toLowerCase().includes(q) ||
+          playerName(p2).toLowerCase().includes(q)
+        );
+      });
+    }
 
     // Group by tournament_id preserving order of first appearance
     const groupMap = new Map<string, TennisMatch[]>();
@@ -389,8 +428,24 @@ export default function MatchesScreen() {
       if (!t) continue;
       result.push({ tournament: t, data: groupByCourt(matches) });
     }
+
+    // Sort tournament sections: upcoming → soonest first; finished → most recent first
+    if (statusTab === "upcoming") {
+      result.sort((a, b) => {
+        const aFirst = a.data.find((i): i is TennisMatch => !isCourtHeader(i))?.starts_at ?? "";
+        const bFirst = b.data.find((i): i is TennisMatch => !isCourtHeader(i))?.starts_at ?? "";
+        return aFirst.localeCompare(bFirst);
+      });
+    } else if (statusTab === "final") {
+      result.sort((a, b) => {
+        const aLast = [...a.data].reverse().find((i): i is TennisMatch => !isCourtHeader(i))?.finished_at ?? "";
+        const bLast = [...b.data].reverse().find((i): i is TennisMatch => !isCourtHeader(i))?.finished_at ?? "";
+        return bLast.localeCompare(aLast);
+      });
+    }
+
     return result;
-  }, [allMatches, statusTab, filter, tournamentMap, playerMap]);
+  }, [allMatches, statusTab, filter, query, tournamentMap, playerMap]);
 
   // Live tab: expand all by default (you want to see scores immediately).
   // Upcoming / Final: start collapsed so you can browse the tournament list.
@@ -413,13 +468,15 @@ export default function MatchesScreen() {
 
   const totalMatches = sections.reduce((acc, s) => acc + s.data.filter((i) => !isCourtHeader(i)).length, 0);
 
-  const emptyMessage =
-    statusTab === "live" ? "No matches live right now."
+  const emptyMessage = query.trim().length > 0
+    ? `No matches found for "${query}".`
+    : statusTab === "live" ? "No matches live right now."
     : statusTab === "upcoming" ? "No upcoming matches."
     : "No finished matches.";
 
   return (
     <SafeAreaView style={styles.container} edges={["left", "right"]}>
+    <KeyboardAvoidingView style={{ flex: 1 }} behavior={Platform.OS === "ios" ? "padding" : "height"}>
       {/* Live / Upcoming / Final tabs */}
       <View style={styles.tabBar}>
         {STATUS_TABS.map((t) => (
@@ -455,6 +512,27 @@ export default function MatchesScreen() {
             </TouchableOpacity>
           ))}
         </ScrollView>
+      </View>
+
+      {/* Player search */}
+      <View style={[styles.searchBar, { backgroundColor: colors.surface, borderBottomColor: colors.border }]}>
+        <Ionicons name="search" size={16} color={colors.textSecondary} style={styles.searchIcon} />
+        <TextInput
+          style={[styles.searchInput, { color: colors.text }]}
+          placeholder="Search players…"
+          placeholderTextColor={colors.textSecondary}
+          value={query}
+          onChangeText={setQuery}
+          returnKeyType="search"
+          clearButtonMode="never"
+          autoCorrect={false}
+          autoCapitalize="none"
+        />
+        {query.length > 0 && (
+          <TouchableOpacity onPress={() => setQuery("")} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}>
+            <Ionicons name="close-circle" size={17} color={colors.textSecondary} />
+          </TouchableOpacity>
+        )}
       </View>
 
       {loading ? (
@@ -504,7 +582,7 @@ export default function MatchesScreen() {
               <MatchCard
                 match={item}
                 playerMap={playerMap}
-                accentColor={surfaceAccentColor(tournamentMap.get(item.tournament_id)?.surface ?? null)}
+                accentColor={surfaceAccentColor(item.surface ?? tournamentMap.get(item.tournament_id)?.surface ?? null)}
                 onPress={() => {
                   const p1 = resolvePlayer(item.player1, item.player1_id, playerMap);
                   const p2 = resolvePlayer(item.player2, item.player2_id, playerMap);
@@ -520,12 +598,16 @@ export default function MatchesScreen() {
                     params: { teamId: item.tournament_id, from: "matches" },
                   });
                 }}
+                onH2HPress={() => {
+                  router.push(`/(app)/match/h2h/${item.id}?from=matches`);
+                }}
               />
             );
           }}
           SectionSeparatorComponent={() => <View style={styles.sectionGap} />}
         />
       )}
+    </KeyboardAvoidingView>
     </SafeAreaView>
   );
 }
@@ -563,6 +645,7 @@ function TournamentHeader({
 
   const surface = surfaceLabel(tournament.surface);
   const accentColor = surfaceAccentColor(tournament.surface);
+  const tier = tierLabel(tournament.tier);
   const dateRange = (() => {
     if (tournament.start_date && tournament.end_date) {
       return `${formatDate(tournament.start_date)} – ${formatDate(tournament.end_date)}`;
@@ -589,6 +672,11 @@ function TournamentHeader({
         </Animated.View>
       </View>
       <View style={styles.tournamentMeta}>
+        {tier ? (
+          <View style={[styles.tierBadge, { backgroundColor: accentColor + "22", borderColor: accentColor + "55" }]}>
+            <Text style={[styles.tierBadgeText, { color: accentColor }]}>{tier}</Text>
+          </View>
+        ) : null}
         {surface ? <Text style={[styles.tournamentMetaText, { color: accentColor, fontWeight: "600" }]}>{surface}</Text> : null}
         {surface && dateRange ? <Text style={styles.tournamentMetaDot}>·</Text> : null}
         {dateRange ? <Text style={styles.tournamentMetaText}>{dateRange}</Text> : null}
@@ -607,18 +695,21 @@ function MatchCard({
   accentColor,
   onPress,
   onPlayerPress,
+  onH2HPress,
 }: {
   match: TennisMatch;
   playerMap: Map<string, TennisPlayer>;
   accentColor: string;
   onPress: () => void;
   onPlayerPress: (playerId: string) => void;
+  onH2HPress?: () => void;
 }) {
   const { colors } = useTheme();
   const styles = useMemo(() => createStyles(colors), [colors]);
 
   const live = isLiveMatch(match);
   const finished = isFinishedMatch(match);
+  const cancelled = match.status === "cancelled" || match.status === "postponed";
 
   // Prefer embedded player objects (API changelog); fall back to playerMap
   // (populated via getTournamentPlayers + supplementary fetches) so names
@@ -646,7 +737,12 @@ function MatchCard({
       {!live && (
         <View style={styles.statusRow}>
           {finished ? (
-            <Text style={styles.finalText}>Final</Text>
+            <>
+              <Text style={styles.finalText}>Final</Text>
+              {match.finished_at ? <Text style={styles.statusDetail}>· {formatDate(match.finished_at)}</Text> : null}
+            </>
+          ) : cancelled ? (
+            <Text style={styles.cancelledText}>Cancelled</Text>
           ) : (
             <>
               {match.starts_at
@@ -691,31 +787,51 @@ function MatchCard({
 
               {/* Names — main player (tappable) + optional partner */}
               <View style={styles.teamNames}>
-                <TouchableOpacity
-                  onPress={() => mainId && onPlayerPress(mainId)}
-                  disabled={!mainId}
-                  activeOpacity={0.6}
-                  hitSlop={{ top: 4, bottom: 4, left: 0, right: 0 }}
-                >
-                  <View style={styles.playerNameRow}>
-                    <Text style={[styles.playerName, isWinner && styles.playerWon, isLoser && styles.playerLost]} numberOfLines={1}>
-                      {mainName}
-                    </Text>
+                {partnerName ? (
+                  // Doubles: names column + single checkmark vertically centered
+                  <View style={{ flexDirection: "row", alignItems: "center" }}>
+                    <View style={{ flexShrink: 1, gap: 2 }}>
+                      <TouchableOpacity
+                        onPress={() => mainId && onPlayerPress(mainId)}
+                        disabled={!mainId}
+                        activeOpacity={0.6}
+                        hitSlop={{ top: 4, bottom: 4, left: 0, right: 0 }}
+                      >
+                        <Text style={[styles.playerName, isWinner && styles.playerWon, isLoser && styles.playerLost]} numberOfLines={1}>
+                          {mainName}
+                        </Text>
+                      </TouchableOpacity>
+                      <TouchableOpacity
+                        onPress={() => partnerId && onPlayerPress(partnerId)}
+                        disabled={!partnerId}
+                        activeOpacity={0.6}
+                        hitSlop={{ top: 4, bottom: 4, left: 0, right: 0 }}
+                      >
+                        <Text style={[styles.partnerName, isWinner && styles.playerWon, isLoser && styles.playerLost]} numberOfLines={1}>
+                          {partnerName}
+                        </Text>
+                      </TouchableOpacity>
+                    </View>
                     {isWinner && (
-                      <Ionicons name="checkmark-circle" size={14} color={colors.primary} style={styles.winnerIcon} />
+                      <Ionicons name="checkmark-circle" size={14} color={colors.primary} style={{ marginLeft: 4, flexShrink: 0 }} />
                     )}
                   </View>
-                </TouchableOpacity>
-                {partnerName && (
+                ) : (
+                  // Singles: name with inline checkmark
                   <TouchableOpacity
-                    onPress={() => partnerId && onPlayerPress(partnerId)}
-                    disabled={!partnerId}
+                    onPress={() => mainId && onPlayerPress(mainId)}
+                    disabled={!mainId}
                     activeOpacity={0.6}
                     hitSlop={{ top: 4, bottom: 4, left: 0, right: 0 }}
                   >
-                    <Text style={[styles.partnerName, isLoser && styles.playerLost]} numberOfLines={1}>
-                      {partnerName}
-                    </Text>
+                    <View style={styles.playerNameRow}>
+                      <Text style={[styles.playerName, isWinner && styles.playerWon, isLoser && styles.playerLost]} numberOfLines={1}>
+                        {mainName}
+                      </Text>
+                      {isWinner && (
+                        <Ionicons name="checkmark-circle" size={14} color={colors.primary} style={styles.winnerIcon} />
+                      )}
+                    </View>
                   </TouchableOpacity>
                 )}
               </View>
@@ -727,42 +843,49 @@ function MatchCard({
                 const myTb     = set[String(team) as "1" | "2"].tiebreak;
                 const wonSet   = myGames > oppGames;
                 const lostSet  = myGames < oppGames;
+                const showTb   = lostSet && myTb != null;
+
+                // For live matches: skip a 0-0 set that hasn't started yet
+                // (the API includes the current set in match.sets even before
+                // any games are played). The live game score covers this state.
+                if (live && myGames === 0 && oppGames === 0) return null;
+
                 return (
                   <View key={i} style={styles.setScoreCell}>
                     <Text style={[styles.setGames, wonSet && styles.setGamesWon, lostSet && styles.setGamesLost]}>
                       {myGames}
                     </Text>
-                    {myTb != null && <Text style={styles.tiebreakScore}>{myTb}</Text>}
+                    {showTb && <Text style={styles.tiebreakScore}>{myTb}</Text>}
                   </View>
                 );
               })}
 
-              {/* Sets won total — shown when there is set data */}
-              {(match.sets ?? []).length > 0 && (() => {
-                const setsWon = (match.sets ?? []).filter(
-                  (set) => (set[String(team) as "1" | "2"].games ?? 0) > (set[opp as "1" | "2"].games ?? 0)
-                ).length;
+
+              {/* Live game score — hidden when both players are at 0 (no game started yet) */}
+              {live && match.live && (() => {
+                const gs1 = match.live.game_score_1;
+                const gs2 = match.live.game_score_2;
+                const bothZero = (!gs1 || gs1 === "0") && (!gs2 || gs2 === "0");
+                if (bothZero) return null;
+                const myGs = team === 1 ? (gs1 || "0") : (gs2 || "0");
                 return (
-                  <View style={[styles.setScoreCell, styles.setsWonCell]}>
-                    <Text style={[styles.setGames, isWinner && styles.setGamesWon, isLoser && styles.setGamesLost]}>
-                      {setsWon}
-                    </Text>
+                  <View style={[styles.setScoreCell, styles.gameScoreCell]}>
+                    <Text style={styles.gameScore}>{myGs}</Text>
                   </View>
                 );
               })()}
-
-              {/* Live game score for this team */}
-              {live && match.live && (
-                <View style={[styles.setScoreCell, styles.gameScoreCell]}>
-                  <Text style={styles.gameScore}>
-                    {team === 1 ? (match.live.game_score_1 || "0") : (match.live.game_score_2 || "0")}
-                  </Text>
-                </View>
-              )}
             </View>
           );
         })}
       </View>
+
+      {/* H2H button — upcoming matches with two known players only */}
+      {!live && !finished && match.status === "scheduled" && match.player1_id && match.player2_id && onH2HPress && (
+        <TouchableOpacity style={[styles.h2hButton, { borderTopColor: accentColor + "33" }]} onPress={onH2HPress} activeOpacity={0.7}>
+          <Ionicons name="stats-chart" size={13} color={accentColor} />
+          <Text style={[styles.h2hButtonText, { color: accentColor }]}>Compare</Text>
+        </TouchableOpacity>
+      )}
     </TouchableOpacity>
   );
 }
@@ -799,6 +922,22 @@ function createStyles(colors: Palette) {
       height: 6,
       borderRadius: 3,
       backgroundColor: "#ef4444",
+    },
+
+    // Player search bar
+    searchBar: {
+      flexDirection: "row",
+      alignItems: "center",
+      paddingHorizontal: spacing.md,
+      paddingVertical: spacing.sm,
+      borderBottomWidth: StyleSheet.hairlineWidth,
+      gap: spacing.xs,
+    },
+    searchIcon: { flexShrink: 0 },
+    searchInput: {
+      flex: 1,
+      ...typography.body,
+      paddingVertical: 0,
     },
 
     // Type filter pills
@@ -858,20 +997,25 @@ function createStyles(colors: Palette) {
     tournamentMetaText: { ...typography.caption, color: colors.textSecondary },
     tournamentMetaDot: { ...typography.caption, color: colors.textSecondary },
     collapsedCount: { ...typography.caption, color: colors.textSecondary },
+    tierBadge: {
+      borderRadius: radius.full,
+      borderWidth: 1,
+      paddingHorizontal: 6,
+      paddingVertical: 2,
+    },
+    tierBadgeText: {
+      fontSize: 10,
+      fontWeight: "700",
+      letterSpacing: 0.4,
+    },
 
     // Match card
     card: {
       backgroundColor: colors.card,
       borderRadius: radius.md,
       padding: spacing.md,
-      borderLeftWidth: 3,
-      borderTopWidth: 0.5,
-      borderRightWidth: 0.5,
-      borderBottomWidth: 1,
-      borderLeftColor: colors.divider,
-      borderTopColor: colors.divider,
-      borderRightColor: colors.divider,
-      borderBottomColor: colors.divider,
+      borderWidth: 0.5,
+      borderColor: colors.divider,
       shadowColor: "#000",
       shadowOpacity: 0.04,
       shadowRadius: 3,
@@ -880,6 +1024,20 @@ function createStyles(colors: Palette) {
     },
     matchSeparator: {
       height: spacing.sm,
+    },
+    h2hButton: {
+      flexDirection: "row",
+      alignItems: "center",
+      justifyContent: "center",
+      gap: 5,
+      marginTop: spacing.sm,
+      paddingTop: spacing.sm,
+      borderTopWidth: 1,
+    },
+    h2hButtonText: {
+      ...typography.caption,
+      fontWeight: "700",
+      letterSpacing: 0.3,
     },
     courtHeader: {
       flexDirection: "row",
@@ -959,6 +1117,7 @@ function createStyles(colors: Palette) {
       gap: 5,
     },
     finalText: { ...typography.caption, color: colors.textSecondary, fontWeight: "600" },
+    cancelledText: { ...typography.caption, color: "#E05252", fontWeight: "600" },
     scheduleText: { ...typography.caption, color: colors.textSecondary },
     statusDetail: { ...typography.caption, color: colors.textSecondary },
     statusBadgeGroup: {
@@ -1020,10 +1179,11 @@ function createStyles(colors: Palette) {
     setGamesWon:  { fontWeight: "700", color: colors.text },
     setGamesLost: { color: colors.textSecondary, fontWeight: "400" },
     tiebreakScore: {
-      fontSize: 9,
+      fontSize: 8,
       color: colors.textSecondary,
-      lineHeight: 12,
-      marginTop: 1,
+      lineHeight: 10,
+      marginTop: 0,
+      alignSelf: "flex-start",
     },
 
     // Sets won total cell (rightmost on finished cards, separated by hairline)

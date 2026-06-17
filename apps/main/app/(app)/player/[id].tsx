@@ -14,6 +14,7 @@ import { Ionicons } from "@expo/vector-icons";
 import { golf, tennis, basketball, hockey, football, GolfPlayer, GolfPlayerScore, TennisPlayer, TennisMatch, BasketballPlayer, HockeyPlayer, FootballPlayer, useAuth, useSport, type Sport } from "@juno/api";
 import { useTheme, spacing, typography, radius, type Palette } from "@juno/ui";
 import { useFollowedPlayers } from "../../../context/FollowedPlayersContext";
+import { useScoutLineup } from "../../../context/ScoutLineupContext";
 
 type Player = GolfPlayer | TennisPlayer | BasketballPlayer | HockeyPlayer | FootballPlayer;
 
@@ -75,6 +76,7 @@ export default function PlayerScreen() {
   const { activeSport } = useSport();
   const { session } = useAuth();
   const { isFollowed, follow, unfollow } = useFollowedPlayers();
+  const { queuePlayer } = useScoutLineup();
   const router = useRouter();
   const navigation = useNavigation();
 
@@ -214,6 +216,20 @@ export default function PlayerScreen() {
               onPress={() => router.push("/(auth)/login")}
             >
               <Text style={styles.signInButtonText}>Sign in to follow</Text>
+            </TouchableOpacity>
+          )}
+
+          {activeSport === "tennis" && player && (
+            <TouchableOpacity
+              style={[styles.scoutButton, { borderColor: colors.primary }]}
+              onPress={() => {
+                queuePlayer(player as TennisPlayer);
+                router.navigate("/(app)/scout");
+              }}
+              activeOpacity={0.75}
+            >
+              <Ionicons name="telescope-outline" size={15} color={colors.primary} />
+              <Text style={[styles.scoutButtonText, { color: colors.primary }]}>Add to Scout</Text>
             </TouchableOpacity>
           )}
         </View>
@@ -501,6 +517,17 @@ function createStyles(colors: Palette) {
       borderColor: colors.border,
     },
     signInButtonText: { ...typography.label, color: colors.textSecondary },
+    scoutButton: {
+      flexDirection: "row",
+      alignItems: "center",
+      gap: spacing.xs,
+      borderRadius: radius.full,
+      paddingVertical: spacing.sm,
+      paddingHorizontal: spacing.lg,
+      marginTop: spacing.sm,
+      borderWidth: 1.5,
+    },
+    scoutButtonText: { ...typography.label, fontWeight: "700" },
     statsRow: {
       flexDirection: "row",
       flexWrap: "wrap",

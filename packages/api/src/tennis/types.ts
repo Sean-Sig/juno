@@ -45,6 +45,7 @@ export type TennisMatch = {
   type: string | null;
   round: string | null;
   court: string | null;
+  surface: string | null;
   order: number | null;
   status: string;
   winner: 1 | 2 | null;
@@ -65,6 +66,7 @@ export type TennisTournament = {
   year: number | null;
   tour: { id: string; name: string } | null;
   surface: string | null;
+  tier: string | null;
   start_date: string | null;
   end_date: string | null;
   courts: Record<string, unknown> | null;
@@ -83,6 +85,113 @@ export type TennisScheduleEntry = {
   theme: Record<string, string> | null;
   gender: string | null;
   priority: number;
+};
+
+export type H2HFormEntry = {
+  result: "W" | "L";
+  opponent_name: string | null;
+  opponent_rank: number | null;
+  tournament: string | null;
+  round: string | null;
+  surface: string | null;
+};
+
+export type H2HMatchEntry = {
+  winner: "team1" | "team2" | null;
+  tournament: string | null;
+  year: number | null;
+  location: string | null;
+  sets: { team1: number[]; team2: number[] } | null;
+  date: string | null;
+  match_type: string | null;
+  status: string | null;
+};
+
+export type H2HPartner = {
+  id: string;
+  name: string;
+  country: string | null;
+  photo: string | null;
+  doubles_rank: number | null;
+  recent_form: H2HFormEntry[] | null;
+};
+
+export type H2HResponse = {
+  match: {
+    id: string;
+    type: string | null;
+    round: string | null;
+    surface: string | null;
+    tier: string | null;
+    tournament_name: string | null;
+    starts_at: string | null;
+    status: string;
+  };
+  player1: {
+    id: string;
+    name: string;
+    country: string | null;
+    photo: string | null;
+    singles_rank: number | null;
+    singles_points: number | null;
+    recent_form: H2HFormEntry[];
+  };
+  player2: {
+    id: string;
+    name: string;
+    country: string | null;
+    photo: string | null;
+    singles_rank: number | null;
+    singles_points: number | null;
+    recent_form: H2HFormEntry[];
+  };
+  player1_partner: H2HPartner | null;
+  player2_partner: H2HPartner | null;
+  h2h: {
+    available: boolean;
+    player1_wins: number;
+    player2_wins: number;
+    total: number;
+    player1_id: string | null;
+    player2_id: string | null;
+    matches: H2HMatchEntry[];
+  };
+};
+
+export type UpcomingMatchup = {
+  id: string;
+  tournament_id: string;
+  tournament_name: string | null;
+  surface: string | null;
+  tier: string | null;
+  round: string | null;
+  starts_at: string | null;
+  status: string;
+  player1: {
+    id: string;
+    name: string;
+    short_name: string | null;
+    singles_rank: number | null;
+    country: string | null;
+    photo: string | null;
+  } | null;
+  player2: {
+    id: string;
+    name: string;
+    short_name: string | null;
+    singles_rank: number | null;
+    country: string | null;
+    photo: string | null;
+  } | null;
+};
+
+export type MatchAnalysis = {
+  predicted_winner: "player1" | "player2";
+  confidence: number;
+  narrative: string;
+  key_factors: string[];
+  player1_edge: string;
+  player2_edge: string;
 };
 
 export type MatchComment = {

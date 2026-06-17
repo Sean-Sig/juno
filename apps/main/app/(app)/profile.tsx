@@ -79,7 +79,7 @@ export default function ProfileScreen() {
               ))}
               <TouchableOpacity
                 style={styles.manageBtn}
-                onPress={() => router.push("/(app)/sport-settings")}
+                onPress={() => router.push("/(app)/sport-settings?from=profile")}
               >
                 <Text style={styles.manageBtnText}>Manage sports</Text>
               </TouchableOpacity>

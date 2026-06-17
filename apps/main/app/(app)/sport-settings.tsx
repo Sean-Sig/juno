@@ -1,4 +1,4 @@
-import React, { useMemo, useState } from "react";
+import React, { useEffect, useMemo, useState } from "react";
 import {
   View,
   Text,
@@ -9,7 +9,7 @@ import {
   ScrollView,
 } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
-import { useRouter } from "expo-router";
+import { useLocalSearchParams, useNavigation, useRouter } from "expo-router";
 import { Ionicons } from "@expo/vector-icons";
 import { useAuth, useSport, ALL_SPORTS, type Sport } from "@juno/api";
 import { useTheme, spacing, radius, typography, type Palette } from "@juno/ui";
@@ -48,10 +48,25 @@ export default function SportSettingsScreen() {
   const { session } = useAuth();
   const { followedSports, defaultSport, finishOnboarding } = useSport();
   const router = useRouter();
+  const navigation = useNavigation();
+  const { from } = useLocalSearchParams<{ from?: string }>();
 
   const [selected, setSelected] = useState<Set<Sport>>(new Set(followedSports));
   const [newDefault, setNewDefault] = useState<Sport>(defaultSport);
   const [saving, setSaving] = useState(false);
+
+  useEffect(() => {
+    navigation.setOptions({
+      headerLeft: () => (
+        <TouchableOpacity
+          onPress={() => from === "profile" ? router.navigate("/(app)/profile") : router.back()}
+          style={{ paddingRight: spacing.sm }}
+        >
+          <Ionicons name="chevron-back" size={26} color={colors.text} />
+        </TouchableOpacity>
+      ),
+    });
+  }, [colors.text]);
 
   function toggleSport(sport: Sport) {
     setSelected((prev) => {

@@ -5,6 +5,9 @@ import type {
   TennisTournament,
   TennisScheduleEntry,
   MatchComment,
+  H2HResponse,
+  UpcomingMatchup,
+  MatchAnalysis,
 } from "./types";
 
 export const tennis = {
@@ -81,6 +84,25 @@ export const tennis = {
     return apiFetch<{ data: TennisPlayer[] }>(
       `/api/v4/tennis/tournaments/${teamId}/players/most_followed`
     );
+  },
+
+  getUpcomingMatchups() {
+    return apiFetch<{ data: UpcomingMatchup[] }>("/api/v4/tennis/matches/upcoming");
+  },
+
+  getMatchH2H(matchId: string) {
+    return apiFetch<{ data: H2HResponse }>(`/api/v4/tennis/matches/${matchId}/h2h`);
+  },
+
+  getAnalysis(matchId: string, token: string) {
+    return apiFetch<{ data: MatchAnalysis | null }>(`/api/v4/tennis/matches/${matchId}/analysis`, { token });
+  },
+
+  analyzeMatch(matchId: string, token: string) {
+    return apiFetch<{ data: MatchAnalysis }>(`/api/v4/tennis/matches/${matchId}/analyze`, {
+      method: "POST",
+      token,
+    });
   },
 
   getMatchComments(matchId: string, locale = "en", params?: PageParams) {
