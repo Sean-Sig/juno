@@ -514,9 +514,11 @@ export default function H2HScreen() {
               {/* Predicted winner banner */}
               <View style={[styles.predictionBanner, { backgroundColor: accent + "18", borderColor: accent + "44" }]}>
                 <View style={styles.predictionLeft}>
-                  <Text style={[styles.predictionLabel, { color: colors.textSecondary }]}>Predicted Winner</Text>
+                  <Text style={[styles.predictionLabel, { color: colors.textSecondary }]}>{isDoubles ? "Predicted Winners" : "Predicted Winner"}</Text>
                   <Text style={[styles.predictionName, { color: colors.text }]}>
-                    {analysis.predicted_winner === "player1" ? player1.name : player2.name}
+                    {analysis.predicted_winner === "player1"
+                      ? player1.name + (isDoubles && player1_partner ? ` / ${player1_partner.name}` : "")
+                      : player2.name + (isDoubles && player2_partner ? ` / ${player2_partner.name}` : "")}
                   </Text>
                 </View>
                 <View style={[styles.confidencePill, { backgroundColor: accent }]}>

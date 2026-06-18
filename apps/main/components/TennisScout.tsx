@@ -439,7 +439,10 @@ function surfaceAccentColor(surface: string | null | undefined): string {
 function formatMatchTime(startsAt: string | null): string {
   if (!startsAt) return "TBD";
   try {
-    return new Date(startsAt).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
+    const d = new Date(startsAt);
+    const date = d.toLocaleDateString([], { month: "short", day: "numeric" });
+    const time = d.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
+    return `${date} · ${time}`;
   } catch {
     return "TBD";
   }

@@ -56,7 +56,10 @@ function resolvePlayer(
 
 function formatTime(iso: string): string {
   try {
-    return new Date(iso).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
+    const d = new Date(iso);
+    const date = d.toLocaleDateString([], { month: "short", day: "numeric" });
+    const time = d.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
+    return `${date} · ${time}`;
   } catch {
     return "";
   }
@@ -1134,7 +1137,7 @@ function createStyles(colors: Palette) {
 
     // Score grid — outer column, one teamRow per team
     scoreGrid: { flexDirection: "column", gap: 8 },
-    scoreGridLive: { marginTop: spacing.lg + 4 },
+    scoreGridLive: { marginTop: spacing.xs },
 
     // One horizontal row per team (names + set scores side by side)
     teamRow: {
