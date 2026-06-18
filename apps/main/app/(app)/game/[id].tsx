@@ -372,7 +372,24 @@ export default function GameScreen() {
             );
           }
 
-          if (isFootballGame(game, activeSport)) return null;
+          if (isFootballGame(game, activeSport)) {
+            const awayDiv = (away as any)?.division as string | null | undefined;
+            const homeDiv = (home as any)?.division as string | null | undefined;
+            if (!awayDiv && !homeDiv) return null;
+            return (
+              <View style={styles.section}>
+                <Text style={styles.sectionTitle}>Game Info</Text>
+                <View style={styles.infoCard}>
+                  <View style={[styles.infoRow, { borderBottomWidth: 0 }]}>
+                    <Text style={styles.infoLabel}>Matchup</Text>
+                    <Text style={styles.infoValue}>
+                      {[awayDiv, homeDiv].filter(Boolean).join(" vs ")}
+                    </Text>
+                  </View>
+                </View>
+              </View>
+            );
+          }
 
           const g = game as BasketballGame;
           const hasInfo = g.series_round || g.series_game_num || g.venue_name || g.attendance;

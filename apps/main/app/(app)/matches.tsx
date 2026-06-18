@@ -410,9 +410,13 @@ export default function MatchesScreen() {
       filtered = filtered.filter((m) => {
         const p1 = resolvePlayer(m.player1, m.player1_id, playerMap);
         const p2 = resolvePlayer(m.player2, m.player2_id, playerMap);
+        const p1p = resolvePlayer(m.player1_partner, m.player1_partner_id, playerMap);
+        const p2p = resolvePlayer(m.player2_partner, m.player2_partner_id, playerMap);
         return (
           playerName(p1).toLowerCase().includes(q) ||
-          playerName(p2).toLowerCase().includes(q)
+          playerName(p2).toLowerCase().includes(q) ||
+          playerName(p1p).toLowerCase().includes(q) ||
+          playerName(p2p).toLowerCase().includes(q)
         );
       });
     }

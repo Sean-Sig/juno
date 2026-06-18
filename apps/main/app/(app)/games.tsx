@@ -1,6 +1,7 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   FlatList,
+  SectionList,
   View,
   Text,
   TextInput,
@@ -441,41 +442,241 @@ function HockeyGamesView() {
 }
 
 // ---------------------------------------------------------------------------
-// Football GameCard
+// NFL — helpers
 // ---------------------------------------------------------------------------
-function footballQuarterLabel(game: FootballGame) {
-  if (!game.period) return game.status_detail ?? "";
-  const p = game.period;
-  if (p <= 4) return `Q${p}`;
-  return `OT`;
+
+function nflKickoffTime(iso: string | null): string {
+  if (!iso) return "TBD";
+  return new Date(iso).toLocaleTimeString([], { hour: "numeric", minute: "2-digit" });
 }
 
-function FootballGameCard({ game, onPress }: { game: FootballGame; onPress: () => void }) {
+// Return the date (YYYY-MM-DD) of the Thursday that starts the NFL week
+// containing a given UTC ISO string. NFL weeks run Thu–Wed.
+function nflWeekThursday(iso: string): string {
+  const d = new Date(iso);
+  // getDay(): 0=Sun,1=Mon,2=Tue,3=Wed,4=Thu,5=Fri,6=Sat
+  // Days since the most recent Thursday
+  const dow = d.getUTCDay();
+  const daysBack = (dow + 3) % 7; // Thu=0, Fri=1, Sat=2, Sun=3, Mon=4, Tue=5, Wed=6
+  const thu = new Date(d);
+  thu.setUTCDate(d.getUTCDate() - daysBack);
+  return thu.toISOString().slice(0, 10);
+}
+
+type NFLWeekSection = {
+  weekKey: string;   // Thursday date YYYY-MM-DD for sorting
+  weekNum: number;
+  title: string;     // "WEEK 1", "WEEK 2", etc.
+  data: FootballGame[];
+};
+
+function groupNFLByWeek(games: FootballGame[]): NFLWeekSection[] {
+  // Group into week buckets
+  const map = new Map<string, FootballGame[]>();
+  for (const g of games) {
+    const key = g.scheduled_at ? nflWeekThursday(g.scheduled_at) : "9999-99-99";
+    if (!map.has(key)) map.set(key, []);
+    map.get(key)!.push(g);
+  }
+
+  // Sort week keys to assign week numbers
+  const sortedKeys = Array.from(map.keys()).sort();
+  const sections: NFLWeekSection[] = sortedKeys.map((key, idx) => ({
+    weekKey: key,
+    weekNum: idx + 1,
+    title: `WEEK ${idx + 1}`,
+    data: map.get(key)!.slice().sort(
+      (a, b) => (a.scheduled_at ?? "").localeCompare(b.scheduled_at ?? ""),
+    ),
+  }));
+
+  return sections;
+}
+
+// ---------------------------------------------------------------------------
+// NFL game card (upcoming only)
+// ---------------------------------------------------------------------------
+
+// ---------------------------------------------------------------------------
+// NFL game card — handles upcoming, live, and final states
+// ---------------------------------------------------------------------------
+
+function nflGameDayTime(iso: string | null): string {
+  if (!iso) return "TBD";
+  const d = new Date(iso);
+  const day = d.toLocaleDateString([], { weekday: "short" }).toUpperCase();
+  const time = d.toLocaleTimeString([], { hour: "numeric", minute: "2-digit" });
+  return `${day}  ·  ${time}`;
+}
+
+function nflQuarterLabel(game: FootballGame): string {
+  if (!game.period) return game.status_detail ?? "LIVE";
+  if (game.period <= 4) return `Q${game.period}`;
+  return "OT";
+}
+
+function kickoffDay(iso: string | null): string {
+  if (!iso) return "TBD";
+  return new Date(iso).toLocaleDateString([], { weekday: "short" }).toUpperCase();
+}
+
+function kickoffTime(iso: string | null): string {
+  if (!iso) return "";
+  return new Date(iso).toLocaleTimeString([], { hour: "numeric", minute: "2-digit" });
+}
+
+function nflNickname(name: string | null | undefined): string {
+  if (!name) return "TBD";
+  return name.split(" ").at(-1) ?? name;
+}
+
+function nflRecord(team: FootballGame["away_team"] | FootballGame["home_team"]): string | null {
+  if (!team) return null;
+  const w = team.wins ?? 0;
+  const l = team.losses ?? 0;
+  const t = (team as any).ties ?? 0;
+  return t > 0 ? `${w}-${l}-${t}` : `${w}-${l}`;
+}
+
+function NFLGameCard({ game, onPress }: { game: FootballGame; onPress: () => void }) {
+  const { colors } = useTheme();
+  const styles = useMemo(() => createStyles(colors), [colors]);
+
   const isLive = game.status === "live";
-  const isFinished = game.status === "finished";
+  const isFinal = game.status === "finished";
+  const away = game.away_team;
+  const home = game.home_team;
+  const awayWins = isFinal && (game.away_score ?? 0) > (game.home_score ?? 0);
+  const homeWins = isFinal && (game.home_score ?? 0) > (game.away_score ?? 0);
+
+  const awayAbbrev = away?.abbreviation ?? away?.name?.slice(0, 3).toUpperCase() ?? "TBD";
+  const homeAbbrev = home?.abbreviation ?? home?.name?.slice(0, 3).toUpperCase() ?? "TBD";
+
+  const isUpcoming = !isLive && !isFinal;
 
   return (
-    <GameCardShell
-      game={game}
-      isLive={isLive}
-      isFinished={isFinished}
-      statusLabel={isLive ? footballQuarterLabel(game) : undefined}
-      onPress={onPress}
-    />
+    <TouchableOpacity style={styles.nflCard} onPress={onPress} activeOpacity={0.75}>
+      {/* Matchup rows */}
+      <View style={styles.nflMatchup}>
+        {/* Away */}
+        <View style={styles.nflTeamRow}>
+          <Text style={[styles.nflAbbrev, (isFinal && !awayWins) && styles.nflMuted]} numberOfLines={1}>
+            {awayAbbrev}
+          </Text>
+          <View style={styles.nflTeamInfo}>
+            <View style={styles.nflNameRow}>
+              <Text style={[styles.nflTeamName, (isFinal && !awayWins) && styles.nflMuted]} numberOfLines={1}>
+                {away?.short_name ?? nflNickname(away?.name)}
+              </Text>
+              <Text style={styles.nflHomeAwayLabel}>(away)</Text>
+            </View>
+            {nflRecord(away) && (
+              <Text style={[styles.nflRecord, (isFinal && !awayWins) && styles.nflMuted]}>
+                {nflRecord(away)}
+              </Text>
+            )}
+          </View>
+          {isLive ? (
+            <View style={styles.nflStatusRow}>
+              <View style={styles.nflLiveDot} />
+              <Text style={styles.nflLiveLabel}>
+                {nflQuarterLabel(game)}
+                {game.period_time ? `  ·  ${game.period_time}` : ""}
+              </Text>
+            </View>
+          ) : isFinal ? (
+            <Text style={styles.nflFinalLabel}>FINAL</Text>
+          ) : (
+            <View style={styles.nflTimeBlock}>
+              <Text style={styles.nflTimeValue}>{kickoffTime(game.scheduled_at)}</Text>
+              <Text style={styles.nflTimeDay}>{kickoffDay(game.scheduled_at)}</Text>
+            </View>
+          )}
+        </View>
+
+        {/* Home */}
+        <View style={styles.nflTeamRow}>
+          <Text style={[styles.nflAbbrev, (isFinal && !homeWins) && styles.nflMuted]} numberOfLines={1}>
+            {homeAbbrev}
+          </Text>
+          <View style={styles.nflTeamInfo}>
+            <View style={styles.nflNameRow}>
+              <Text style={[styles.nflTeamName, (isFinal && !homeWins) && styles.nflMuted]} numberOfLines={1}>
+                {home?.short_name ?? nflNickname(home?.name)}
+              </Text>
+              <Text style={styles.nflHomeAwayLabel}>(home)</Text>
+            </View>
+            {nflRecord(home) && (
+              <Text style={[styles.nflRecord, (isFinal && !homeWins) && styles.nflMuted]}>
+                {nflRecord(home)}
+              </Text>
+            )}
+          </View>
+          {(isLive || isFinal) && game.home_score != null && (
+            <Text style={[styles.nflScore, homeWins && styles.nflScoreWinner, (isFinal && !homeWins) && styles.nflScoreMuted]}>
+              {game.home_score}
+            </Text>
+          )}
+        </View>
+      </View>
+    </TouchableOpacity>
   );
 }
 
 // ---------------------------------------------------------------------------
-// Football games view
+// NFL games view — Live / Upcoming / Final
 // ---------------------------------------------------------------------------
+
+const NFL_TABS: { key: FilterTab; label: string }[] = [
+  { key: "live",     label: "Live" },
+  { key: "upcoming", label: "Upcoming" },
+  { key: "final",    label: "Final" },
+];
+
+type NFLLeague = "all" | "NFL" | "NFL Preseason";
+const NFL_LEAGUE_FILTERS: { key: NFLLeague; label: string }[] = [
+  { key: "all",          label: "All" },
+  { key: "NFL",          label: "Regular Season" },
+  { key: "NFL Preseason", label: "Preseason" },
+];
+
+function weekSectionHeader(sec: NFLWeekSection) {
+  if (sec.weekKey === "9999-99-99") return { title: sec.title, range: "" };
+  const thu = new Date(sec.weekKey + "T00:00:00");
+  const wed = new Date(thu);
+  wed.setDate(thu.getDate() + 6);
+  const fmt = (d: Date) => d.toLocaleDateString([], { month: "short", day: "numeric" });
+  return { title: sec.title, range: `${fmt(thu)} – ${fmt(wed)}` };
+}
+
 function FootballGamesView() {
+  const { colors } = useTheme();
+  const styles = useMemo(() => createStyles(colors), [colors]);
   const router = useRouter();
 
   const [tab, setTab] = useState<FilterTab>("live");
+  const [leagueFilter, setLeagueFilter] = useState<NFLLeague>("all");
   const [games, setGames] = useState<FootballGame[]>([]);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
+  const [query, setQuery] = useState("");
   const initialAutoSwitch = useRef(true);
+
+  const load = useCallback(async (filter: FilterTab, league: NFLLeague) => {
+    const params: Parameters<typeof football.getGames>[0] = {};
+    if (league !== "all") params.league = league;
+    if (filter === "live")          params.status = "live";
+    else if (filter === "upcoming") params.status = "scheduled";
+    else                            params.status = "finished";
+    const { data } = await football.getGames(params);
+    setGames(data);
+  }, []);
+
+  useEffect(() => {
+    setLoading(true);
+    setQuery("");
+    load(tab, leagueFilter).finally(() => setLoading(false));
+  }, [tab, leagueFilter, load]);
 
   // Auto-switch to Upcoming if no live games on first load
   useEffect(() => {
@@ -485,39 +686,157 @@ function FootballGamesView() {
     }
   }, [loading, games.length, tab]);
 
-  const load = useCallback(async (filter: FilterTab) => {
-    const params: Parameters<typeof football.getGames>[0] = {};
-    if (filter === "live") params.status = "live";
-    else if (filter === "upcoming") { params.date = tomorrowStr(); params.status = "scheduled"; }
-    else { params.date = todayStr(); params.status = "finished"; }
-    const { data } = await football.getGames(params);
-    setGames(data);
-  }, []);
+  function onRefresh() {
+    setRefreshing(true);
+    load(tab, leagueFilter).finally(() => setRefreshing(false));
+  }
 
-  useEffect(() => { setLoading(true); load(tab).finally(() => setLoading(false)); }, [tab, load]);
-  function onRefresh() { setRefreshing(true); load(tab).finally(() => setRefreshing(false)); }
+  const hasLive = tab === "live" && games.length > 0;
+
+  const filteredGames = useMemo(() => {
+    const q = query.trim().toLowerCase();
+    if (!q) return games;
+    return games.filter(
+      (g) =>
+        g.home_team?.name?.toLowerCase().includes(q) ||
+        g.home_team?.abbreviation?.toLowerCase().includes(q) ||
+        g.away_team?.name?.toLowerCase().includes(q) ||
+        g.away_team?.abbreviation?.toLowerCase().includes(q),
+    );
+  }, [games, query]);
+
+  // Upcoming + Final: group by week. Live: flat list sorted by time.
+  const weekSections = useMemo((): NFLWeekSection[] => {
+    if (tab === "live") return [];
+    const sorted = tab === "final"
+      ? filteredGames.slice().sort((a, b) => (b.scheduled_at ?? "").localeCompare(a.scheduled_at ?? ""))
+      : filteredGames;
+    return groupNFLByWeek(sorted);
+  }, [filteredGames, tab]);
+
+  const liveGames = useMemo(() =>
+    tab === "live"
+      ? filteredGames.slice().sort((a, b) => (a.scheduled_at ?? "").localeCompare(b.scheduled_at ?? ""))
+      : [],
+    [filteredGames, tab],
+  );
+
+  const emptyMessage = query.trim()
+    ? `No games matching "${query}".`
+    : tab === "live"    ? "No games live right now."
+    : tab === "upcoming" ? "Check back when the schedule is released."
+    : "No finished games found.";
+
+  const emptyTitle = query.trim() ? "No results"
+    : tab === "live" ? "Nothing live" : "No games found";
 
   return (
-    <GamesListView
-      tab={tab}
-      onTabChange={setTab}
-      loading={loading}
-      refreshing={refreshing}
-      onRefresh={onRefresh}
-      games={games}
-      filterFn={(g, q) =>
-        (g.home_team?.name?.toLowerCase().includes(q) ?? false) ||
-        (g.home_team?.abbreviation?.toLowerCase().includes(q) ?? false) ||
-        (g.away_team?.name?.toLowerCase().includes(q) ?? false) ||
-        (g.away_team?.abbreviation?.toLowerCase().includes(q) ?? false)
-      }
-      renderGame={(item) => (
-        <FootballGameCard
-          game={item}
-          onPress={() => router.push(`/game/${item.id}`)}
+    <SafeAreaView style={styles.container} edges={["left", "right"]}>
+      {/* Live / Upcoming / Final tabs */}
+      <View style={styles.tabBar}>
+        {NFL_TABS.map((t) => (
+          <TouchableOpacity
+            key={t.key}
+            style={[styles.tabItem, tab === t.key && styles.tabItemActive]}
+            onPress={() => setTab(t.key)}
+            activeOpacity={0.7}
+          >
+            {t.key === "live" && tab !== "live" && hasLive && (
+              <View style={styles.nflLiveDotTab} />
+            )}
+            <Text style={[styles.tabLabel, tab === t.key && styles.tabLabelActive]}>
+              {t.label}
+            </Text>
+          </TouchableOpacity>
+        ))}
+      </View>
+
+      {/* League filter */}
+      <View style={styles.nflLeagueBar}>
+        {NFL_LEAGUE_FILTERS.map((f) => (
+          <TouchableOpacity
+            key={f.key}
+            style={[styles.nflLeagueChip, leagueFilter === f.key && styles.nflLeagueChipActive]}
+            onPress={() => setLeagueFilter(f.key)}
+            activeOpacity={0.7}
+          >
+            <Text style={[styles.nflLeagueChipText, leagueFilter === f.key && styles.nflLeagueChipTextActive]}>
+              {f.label}
+            </Text>
+          </TouchableOpacity>
+        ))}
+      </View>
+
+      {/* Search */}
+      <View style={styles.searchBar}>
+        <TextInput
+          style={styles.searchInput}
+          placeholder="Search teams…"
+          value={query}
+          onChangeText={setQuery}
+          placeholderTextColor={colors.textSecondary}
+          returnKeyType="search"
+          clearButtonMode="while-editing"
+        />
+      </View>
+
+      {loading ? (
+        <View style={styles.center}>
+          <ActivityIndicator color={colors.primary} />
+        </View>
+      ) : tab === "live" ? (
+        liveGames.length === 0 ? (
+          <View style={styles.emptyWrap}>
+            <Text style={styles.emptyTitle}>{emptyTitle}</Text>
+            <Text style={styles.emptyText}>{emptyMessage}</Text>
+          </View>
+        ) : (
+          <FlatList
+            data={liveGames}
+            keyExtractor={(g) => g.id}
+            contentContainerStyle={styles.nflListContent}
+            refreshControl={
+              <RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor={colors.primary} />
+            }
+            renderItem={({ item }) => (
+              <NFLGameCard game={item} onPress={() => router.push(`/game/${item.id}`)} />
+            )}
+          />
+        )
+      ) : weekSections.length === 0 ? (
+        <View style={styles.emptyWrap}>
+          <Text style={styles.emptyTitle}>{emptyTitle}</Text>
+          <Text style={styles.emptyText}>{emptyMessage}</Text>
+        </View>
+      ) : (
+        <SectionList
+          sections={weekSections}
+          keyExtractor={(g) => g.id}
+          contentContainerStyle={styles.nflListContent}
+          stickySectionHeadersEnabled
+          refreshControl={
+            <RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor={colors.primary} />
+          }
+          renderSectionHeader={({ section: s }) => {
+            const sec = s as NFLWeekSection;
+            const { title, range } = weekSectionHeader(sec);
+            const isPreseason = sec.data[0]?.league === "NFL Preseason";
+            return (
+              <View style={styles.nflWeekHeader}>
+                <View style={styles.nflWeekLeft}>
+                  <Text style={styles.nflWeekTitle}>{title}</Text>
+                  {range ? <Text style={styles.nflWeekRange}>{range}</Text> : null}
+                </View>
+                {isPreseason && <Text style={styles.nflWeekLeagueTag}>PRESEASON</Text>}
+              </View>
+            );
+          }}
+          renderItem={({ item }) => (
+            <NFLGameCard game={item} onPress={() => router.push(`/game/${item.id}`)} />
+          )}
         />
       )}
-    />
+    </SafeAreaView>
   );
 }
 
@@ -800,6 +1119,178 @@ function createStyles(colors: Palette) {
     },
     teamScorePlaceholder: {
       width: 42,
+    },
+
+    // ── NFL games ──
+    nflLeagueBar: {
+      flexDirection: "row",
+      gap: spacing.xs,
+      paddingHorizontal: spacing.md,
+      paddingVertical: spacing.sm,
+      backgroundColor: colors.surface,
+      borderBottomWidth: StyleSheet.hairlineWidth,
+      borderBottomColor: colors.divider,
+    },
+    nflLeagueChip: {
+      paddingHorizontal: spacing.md,
+      paddingVertical: spacing.xs + 2,
+      borderRadius: radius.full,
+      backgroundColor: colors.card,
+    },
+    nflLeagueChipActive: {
+      backgroundColor: colors.primary,
+    },
+    nflLeagueChipText: {
+      ...typography.label,
+      color: colors.textSecondary,
+      fontWeight: "500",
+    },
+    nflLeagueChipTextActive: {
+      color: colors.textOnPrimary,
+      fontWeight: "700",
+    },
+    nflListContent: { padding: spacing.md, gap: spacing.sm, paddingBottom: spacing.xl },
+    nflLiveDotTab: { width: 6, height: 6, borderRadius: 3, backgroundColor: "#ef4444" },
+    nflWeekHeader: {
+      flexDirection: "row",
+      alignItems: "center",
+      justifyContent: "space-between",
+      backgroundColor: colors.surface,
+      paddingHorizontal: spacing.md,
+      paddingVertical: spacing.sm,
+      marginHorizontal: -spacing.md,
+      borderBottomWidth: StyleSheet.hairlineWidth,
+      borderBottomColor: colors.border,
+    },
+    nflWeekLeft: {
+      flexDirection: "row",
+      alignItems: "baseline",
+      gap: spacing.sm,
+    },
+    nflWeekTitle: {
+      ...typography.label,
+      color: colors.text,
+      fontWeight: "800",
+      letterSpacing: 0.6,
+    },
+    nflWeekRange: {
+      ...typography.caption,
+      color: colors.textSecondary,
+    },
+    nflWeekLeagueTag: {
+      ...typography.caption,
+      color: colors.textSecondary,
+      fontWeight: "600",
+      letterSpacing: 0.4,
+    },
+    nflCard: {
+      backgroundColor: colors.card,
+      paddingHorizontal: spacing.md,
+      paddingVertical: spacing.md,
+      borderRadius: radius.lg,
+      shadowColor: "#000",
+      shadowOpacity: 0.05,
+      shadowOffset: { width: 0, height: 1 },
+      shadowRadius: 4,
+      elevation: 2,
+    },
+    nflStatusRow: {
+      flexDirection: "row",
+      alignItems: "center",
+      gap: 6,
+    },
+    nflTimeBlock: {
+      alignItems: "flex-end",
+    },
+    nflLiveDot: {
+      width: 6,
+      height: 6,
+      borderRadius: 3,
+      backgroundColor: "#ef4444",
+    },
+    nflLiveLabel: {
+      ...typography.caption,
+      color: "#ef4444",
+      fontWeight: "700",
+      letterSpacing: 0.3,
+    },
+    nflFinalLabel: {
+      ...typography.caption,
+      color: colors.textSecondary,
+      fontWeight: "700",
+      letterSpacing: 0.5,
+    },
+    nflKickoff: {
+      ...typography.caption,
+      color: colors.textSecondary,
+      fontWeight: "600",
+    },
+    nflMatchup: {
+      gap: spacing.xs,
+    },
+    nflTeamRow: {
+      flexDirection: "row",
+      alignItems: "center",
+      gap: spacing.sm,
+    },
+    nflAbbrev: {
+      fontSize: 13,
+      fontWeight: "800",
+      color: colors.text,
+      width: 36,
+      letterSpacing: 0.3,
+    },
+    nflTeamInfo: {
+      flex: 1,
+      gap: 1,
+    },
+    nflTeamName: {
+      ...typography.body,
+      color: colors.text,
+      fontWeight: "500",
+    },
+    nflRecord: {
+      fontSize: 11,
+      color: colors.textSecondary,
+      fontWeight: "400",
+    },
+    nflScore: {
+      fontSize: 20,
+      fontWeight: "800",
+      color: colors.text,
+      minWidth: 32,
+      textAlign: "right",
+    },
+    nflScoreWinner: { color: colors.primary },
+    nflScoreMuted: { color: colors.textSecondary, fontWeight: "600" },
+    nflMuted: { color: colors.textSecondary },
+    nflTimeValue: {
+      fontSize: 14,
+      fontWeight: "700",
+      color: colors.text,
+      textAlign: "right",
+    },
+    nflTimeDay: {
+      fontSize: 11,
+      fontWeight: "500",
+      color: colors.textSecondary,
+      textAlign: "right",
+      letterSpacing: 0.3,
+    },
+    nflNameRow: {
+      flexDirection: "row",
+      alignItems: "center",
+      gap: spacing.xs,
+    },
+    nflHomeAwayLabel: {
+      fontSize: 11,
+      color: colors.textSecondary,
+      fontWeight: "400",
+    },
+    nflSeparator: {
+      height: StyleSheet.hairlineWidth,
+      backgroundColor: colors.border,
+      marginLeft: spacing.md,
     },
 
     // ── Period / quarter grid ──

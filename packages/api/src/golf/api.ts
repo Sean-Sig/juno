@@ -2,7 +2,7 @@ import { apiFetch, buildQuery, type PageParams } from "../client";
 import type { GolfPlayer, GolfTournament, GolfScheduleEntry, PlayerSeasonRank, GolfPlayerScore } from "./types";
 
 export const golf = {
-  getPlayers(params?: { sort?: string } & PageParams) {
+  getPlayers(params?: { sort?: string; name?: string } & PageParams) {
     return apiFetch<{ data: GolfPlayer[] }>(`/api/v4/golf/players${buildQuery(params)}`);
   },
 

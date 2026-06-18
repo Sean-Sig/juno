@@ -15,7 +15,9 @@ export function joinGolfChannel(
   const channel = socket.channel(`sport:golf:${teamId}`, {});
 
   channel.on("tournament_state", ({ tournaments }) => {
-    if (tournaments?.[0]) handlers.onState(tournaments[0]);
+    if (Array.isArray(tournaments)) {
+      tournaments.forEach((t) => handlers.onState(t));
+    }
   });
 
   channel.on("golf_delta", (diff: GolfDelta) => {

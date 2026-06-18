@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useState, useCallback } from "react";
+import React, { useEffect, useMemo, useRef, useState, useCallback } from "react";
 import { FlatList, View, Text, TextInput, ActivityIndicator, RefreshControl, StyleSheet, TouchableOpacity } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { useRouter } from "expo-router";
@@ -28,11 +28,14 @@ export default function RankingsScreen() {
   const router = useRouter();
   const [rankingType, setRankingType] = useState(RANKING_TYPES[0]);
   const [players, setPlayers] = useState<GolfPlayer[]>([]);
+  const [searchResults, setSearchResults] = useState<GolfPlayer[]>([]);
   const [query, setQuery] = useState("");
   const [loading, setLoading] = useState(true);
+  const [searching, setSearching] = useState(false);
   const [refreshing, setRefreshing] = useState(false);
   const [loadingMore, setLoadingMore] = useState(false);
   const [hasMore, setHasMore] = useState(true);
+  const searchDebounce = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const load = useCallback(() => {
     setHasMore(true);
@@ -47,8 +50,33 @@ export default function RankingsScreen() {
     load().finally(() => setLoading(false));
   }, [load]);
 
+  // Debounced server-side search — fires 500 ms after the user stops typing,
+  // and only when there are at least 2 characters.
+  useEffect(() => {
+    if (searchDebounce.current) clearTimeout(searchDebounce.current);
+
+    const trimmed = query.trim();
+    if (trimmed.length < 2) {
+      setSearchResults([]);
+      setSearching(false); // reset spinner if user clears the field
+      return;
+    }
+
+    setSearching(true);
+    searchDebounce.current = setTimeout(() => {
+      golf
+        .getPlayers({ name: trimmed, sort: rankingType.sort, per_page: PER_PAGE })
+        .then(({ data }) => setSearchResults(data))
+        .finally(() => setSearching(false));
+    }, 500);
+
+    return () => {
+      if (searchDebounce.current) clearTimeout(searchDebounce.current);
+    };
+  }, [query, rankingType]);
+
   function loadMore() {
-    if (loadingMore || !hasMore || loading) return;
+    if (loadingMore || !hasMore || loading || query.trim()) return;
     setLoadingMore(true);
     const nextPage = Math.floor(players.length / PER_PAGE) + 1;
 
@@ -74,11 +102,9 @@ export default function RankingsScreen() {
     }
   }
 
-  const filtered = players.filter((p) => {
-    if (!query.trim()) return true;
-    const name = `${p.display_first_name ?? p.first_name} ${p.display_last_name ?? p.last_name}`.toLowerCase();
-    return name.includes(query.trim().toLowerCase());
-  });
+  // When searching, show server results; otherwise show the paginated ranked list
+  const isSearching = query.trim().length >= 2;
+  const filtered = isSearching ? searchResults : players;
 
   return (
     <SafeAreaView style={styles.container} edges={["left", "right"]}>
@@ -117,13 +143,21 @@ export default function RankingsScreen() {
           <SkeletonCard />
           <SkeletonCard />
         </View>
+      ) : searching ? (
+        <View style={styles.searchingWrap}>
+          <ActivityIndicator color={colors.primary} />
+        </View>
       ) : (
         <FlatList
           data={filtered}
           keyExtractor={(p) => p.id}
           contentContainerStyle={styles.list}
-          refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor={colors.primary} />}
-          onEndReached={query.trim() ? undefined : loadMore}
+          refreshControl={
+            isSearching ? undefined : (
+              <RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor={colors.primary} />
+            )
+          }
+          onEndReached={isSearching ? undefined : loadMore}
           onEndReachedThreshold={0.4}
           ListFooterComponent={loadingMore ? <ActivityIndicator color={colors.primary} style={styles.footerSpinner} /> : null}
           renderItem={({ item }) => (
@@ -139,7 +173,11 @@ export default function RankingsScreen() {
               onPress={() => router.push(`/player/${item.id}`)}
             />
           )}
-          ListEmptyComponent={<Text style={styles.empty}>No players found.</Text>}
+          ListEmptyComponent={
+            <Text style={styles.empty}>
+              {isSearching ? `No players matching "${query.trim()}".` : "No players found."}
+            </Text>
+          }
         />
       )}
     </SafeAreaView>
@@ -179,6 +217,7 @@ function createStyles(colors: Palette) {
     },
     list: { padding: spacing.md, paddingTop: 0 },
     footerSpinner: { marginVertical: spacing.md },
+    searchingWrap: { flex: 1, alignItems: "center", justifyContent: "center", paddingTop: spacing.xl },
     empty: { ...typography.body, color: colors.textSecondary, textAlign: "center", marginTop: spacing.lg },
   });
 }
