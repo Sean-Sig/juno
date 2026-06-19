@@ -23,6 +23,7 @@ const SPORT_META: Record<Sport, { label: string; emoji: string }> = {
   basketball: { label: "Basketball", emoji: "🏀" },
   hockey: { label: "Hockey", emoji: "🏒" },
   football: { label: "Football", emoji: "🏈" },
+  soccer: { label: "Soccer", emoji: "⚽" },
 };
 
 // ---------------------------------------------------------------------------
@@ -217,13 +218,25 @@ export default function AppLayout() {
         name="games"
         options={{
           title: "Games",
-          href: activeSport === "basketball" || activeSport === "hockey" || activeSport === "football" ? undefined : null,
+          href:
+            activeSport === "basketball" ||
+            activeSport === "hockey" ||
+            activeSport === "football" ||
+            activeSport === "soccer"
+              ? undefined
+              : null,
           tabBarIcon: ({ color, size }) =>
             activeSport === "hockey" ? (
               <MaterialCommunityIcons name="hockey-sticks" color={color} size={size} />
             ) : (
               <Ionicons
-                name={activeSport === "basketball" ? "basketball" : "american-football"}
+                name={
+                  activeSport === "basketball"
+                    ? "basketball"
+                    : activeSport === "soccer"
+                    ? "football-outline"
+                    : "american-football"
+                }
                 color={color}
                 size={size}
               />

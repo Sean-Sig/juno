@@ -40,6 +40,11 @@ const SPORT_META: Record<Sport, { label: string; emoji: string; description: str
     emoji: "🏈",
     description: "NFL live scores, standings & schedules",
   },
+  soccer: {
+    label: "Soccer",
+    emoji: "⚽",
+    description: "EPL, La Liga, MLS & more — live scores & standings",
+  },
 };
 
 export default function SportSettingsScreen() {

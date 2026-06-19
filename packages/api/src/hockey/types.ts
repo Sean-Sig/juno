@@ -26,8 +26,7 @@ export type HockeyPlayer = {
   id: string;
   first_name: string;
   last_name: string;
-  display_first_name: string | null;
-  display_last_name: string | null;
+  display_name: string;
   country: string | null;
   photo: string | null;
   position: string | null;

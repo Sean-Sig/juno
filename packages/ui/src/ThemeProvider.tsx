@@ -7,6 +7,7 @@ import {
   basketballPalettes,
   hockeyPalettes,
   footballPalettes,
+  soccerPalettes,
   spacing,
   radius,
   typography,
@@ -14,7 +15,7 @@ import {
   type ThemeMode,
 } from "./theme";
 
-export type Sport = "golf" | "tennis" | "basketball" | "hockey" | "football";
+export type Sport = "golf" | "tennis" | "basketball" | "hockey" | "football" | "soccer";
 export type ThemePreference = ThemeMode | "system";
 
 type ThemeContextValue = {
@@ -36,6 +37,7 @@ const palettesBySport: Record<Sport, { light: Palette; dark: Palette }> = {
   basketball: basketballPalettes,
   hockey: hockeyPalettes,
   football: footballPalettes,
+  soccer: soccerPalettes,
 };
 
 // Single key — theme preference is global, not per-sport

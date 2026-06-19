@@ -197,6 +197,41 @@ export const footballPalettes: SportPalettes = {
   },
 };
 
+export const soccerPalettes: SportPalettes = {
+  light: {
+    primary: "#1B7A3D",       // pitch green
+    secondary: "#FFFFFF",     // ball white
+    background: "#F9FAFB",
+    surface: "#FFFFFF",
+    card: "#FFFFFF",
+    text: "#111827",
+    textSecondary: "#6B7280",
+    textOnPrimary: "#FFFFFF",
+    textOnSecondary: "#111827",
+    border: "#E5E7EB",
+    divider: "rgba(17, 24, 39, 0.12)",
+    live: "#1B7A3D",
+    liveBackground: "#DCFCE7",
+    error: "#DC2626",
+  },
+  dark: {
+    primary: "#34D058",       // bright pitch green on dark
+    secondary: "#E5E7EB",
+    background: "#121212",
+    surface: "#121212",
+    card: "#1E1E1E",
+    text: "#FFFFFF",
+    textSecondary: "#B3B3B3",
+    textOnPrimary: "#0B2E15",
+    textOnSecondary: "#0B2E15",
+    border: "rgba(255, 255, 255, 0.12)",
+    divider: "rgba(255, 255, 255, 0.5)",
+    live: "#34D058",
+    liveBackground: "rgba(52, 208, 88, 0.2)",
+    error: "#F87171",
+  },
+};
+
 export const spacing = {
   xs: 4,
   sm: 8,

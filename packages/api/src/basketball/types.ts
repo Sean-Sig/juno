@@ -22,8 +22,7 @@ export type BasketballPlayer = {
   id: string;
   first_name: string;
   last_name: string;
-  display_first_name: string | null;
-  display_last_name: string | null;
+  display_name: string;
   country: string | null;
   photo: string | null;
   position: string | null;
@@ -70,7 +69,6 @@ export type BasketballGame = {
   enet_event_id: string | null;
   venue_name: string | null;
   venue_city: string | null;
-  venue_country: string | null;
   venue_capacity: number | null;
   venue_latitude: string | null;
   venue_longitude: string | null;
@@ -78,6 +76,4 @@ export type BasketballGame = {
   series_game_num: number | null;
   series_best_of: number | null;
   attendance: number | null;
-  home_timeouts_remaining: number | null;
-  away_timeouts_remaining: number | null;
 };

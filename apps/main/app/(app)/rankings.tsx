@@ -5,6 +5,7 @@ import TennisRankings from "../../components/TennisRankings";
 import BasketballStandings from "../../components/BasketballStandings";
 import HockeyStandings from "../../components/HockeyStandings";
 import FootballStandings from "../../components/FootballStandings";
+import SoccerStandings from "../../components/SoccerStandings";
 
 export default function RankingsScreen() {
   const { activeSport } = useSport();
@@ -12,5 +13,6 @@ export default function RankingsScreen() {
   if (activeSport === "tennis") return <TennisRankings />;
   if (activeSport === "hockey") return <HockeyStandings />;
   if (activeSport === "football") return <FootballStandings />;
+  if (activeSport === "soccer") return <SoccerStandings />;
   return <BasketballStandings />;
 }

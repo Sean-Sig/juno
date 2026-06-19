@@ -11,6 +11,7 @@ import {
   basketball,
   hockey,
   football,
+  soccer,
   useAuth,
   useSport,
   type Sport,
@@ -26,6 +27,7 @@ function apiForSport(sport: Sport) {
     case "basketball": return basketball;
     case "hockey":     return hockey;
     case "football":   return football;
+    case "soccer":     return soccer;
   }
 }
 

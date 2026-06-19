@@ -3,9 +3,9 @@ import * as SecureStore from "expo-secure-store";
 import { fan } from "../fan/api";
 import { useAuth } from "../auth/context";
 
-export type Sport = "golf" | "tennis" | "basketball" | "hockey" | "football";
+export type Sport = "golf" | "tennis" | "basketball" | "hockey" | "football" | "soccer";
 
-export const ALL_SPORTS: Sport[] = ["golf", "tennis", "basketball", "hockey", "football"];
+export const ALL_SPORTS: Sport[] = ["golf", "tennis", "basketball", "hockey", "football", "soccer"];
 
 const STORAGE_KEY = "juno_sport_prefs";
 

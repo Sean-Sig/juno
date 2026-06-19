@@ -10,11 +10,24 @@ import {
 import { SafeAreaView } from "react-native-safe-area-context";
 import { useLocalSearchParams, useNavigation, useRouter } from "expo-router";
 import { Ionicons } from "@expo/vector-icons";
-import { basketball, hockey, football, joinBasketballGamesChannel, joinHockeyGamesChannel, useSport, type BasketballGame, type HockeyGame, type FootballGame } from "@juno/api";
+import {
+  basketball,
+  hockey,
+  football,
+  soccer,
+  joinBasketballGamesChannel,
+  joinHockeyGamesChannel,
+  joinSoccerGamesChannel,
+  useSport,
+  type BasketballGame,
+  type HockeyGame,
+  type FootballGame,
+  type SoccerGame,
+} from "@juno/api";
 import { Channel } from "phoenix";
-import { useTheme, spacing, typography, radius, type Palette } from "@juno/ui";
+import { useTheme, spacing, typography, radius, countryFlag, type Palette } from "@juno/ui";
 
-type Game = BasketballGame | HockeyGame | FootballGame;
+type Game = BasketballGame | HockeyGame | FootballGame | SoccerGame;
 
 function isHockeyGame(game: Game, sport: string): game is HockeyGame {
   return sport === "hockey";
@@ -24,7 +37,21 @@ function isFootballGame(game: Game, sport: string): game is FootballGame {
   return sport === "football";
 }
 
+function isSoccerGame(game: Game, sport: string): game is SoccerGame {
+  return sport === "soccer";
+}
+
 function periodLabel(game: Game, sport: string): string {
+  if (sport === "soccer") {
+    if (game.status_detail === "HT") return "HT";
+    if (!game.period) return "";
+    const p = game.period;
+    if (p === 1) return "1H";
+    if (p === 2) return "2H";
+    if (p === 3) return "ET1";
+    if (p === 4) return "ET2";
+    return "PEN";
+  }
   if (!game.period) return "";
   const p = game.period;
   if (sport === "hockey") {
@@ -56,12 +83,30 @@ export default function GameScreen() {
     if (!id) return;
     setLoading(true);
     setGame(null);
-    const api = activeSport === "hockey" ? hockey : activeSport === "football" ? football : basketball;
+    const api =
+      activeSport === "hockey" ? hockey :
+      activeSport === "football" ? football :
+      activeSport === "soccer" ? soccer :
+      basketball;
     api
       .getGame(id)
       .then(({ data }) => setGame(data as Game))
       .catch(() => {})
       .finally(() => setLoading(false));
+
+    if (activeSport === "soccer") {
+      const channel: Channel = joinSoccerGamesChannel({
+        onState: (games) => {
+          const match = games.find((g) => g.id === id);
+          if (match) setGame(match as Game);
+        },
+        onDelta: (games) => {
+          const match = games.find((g) => g.id === id);
+          if (match) setGame((prev) => (prev ? { ...prev, ...match } : (match as Game)));
+        },
+      });
+      return () => { channel.leave(); };
+    }
 
     if (activeSport === "hockey") {
       const channel: Channel = joinHockeyGamesChannel({
@@ -96,10 +141,11 @@ export default function GameScreen() {
   useEffect(() => {
     const away = game?.away_team;
     const home = game?.home_team;
-    const title =
-      away && home
-        ? `${away.abbreviation ?? away.name} @ ${home.abbreviation ?? home.name}`
-        : "Game";
+    // National-team abbreviations are unreliable (often a literal "TBD"
+    // placeholder) — prefer the team name for soccer.
+    const awayLabel = activeSport === "soccer" ? away?.name : away?.abbreviation ?? away?.name;
+    const homeLabel = activeSport === "soccer" ? home?.name : home?.abbreviation ?? home?.name;
+    const title = away && home ? `${awayLabel} @ ${homeLabel}` : "Game";
     navigation.setOptions({
       title,
       headerLeft: () => (
@@ -109,7 +155,7 @@ export default function GameScreen() {
       ),
       headerRight: () => null,
     });
-  }, [game, colors.text]);
+  }, [game, colors.text, activeSport]);
 
   if (loading) {
     return (
@@ -132,12 +178,28 @@ export default function GameScreen() {
   const away = game.away_team;
   const home = game.home_team;
 
+  // National-team abbreviations are unreliable (often a literal "TBD"
+  // placeholder) — fall back to a flag derived from the team/country name.
+  const awayFlag = activeSport === "soccer" ? countryFlag(away?.name) : null;
+  const homeFlag = activeSport === "soccer" ? countryFlag(home?.name) : null;
+
   const awayWins = isFinished && (game.away_score ?? 0) > (game.home_score ?? 0);
   const homeWins = isFinished && (game.home_score ?? 0) > (game.away_score ?? 0);
 
   // Build period breakdown
   let periods: { label: string; away: number | null; home: number | null }[];
-  if (isHockeyGame(game, activeSport)) {
+  if (isSoccerGame(game, activeSport)) {
+    periods = [
+      { label: "1H", away: game.away_score_h1, home: game.home_score_h1 },
+      { label: "2H", away: game.away_score_h2, home: game.home_score_h2 },
+    ];
+    if (game.home_score_et != null || game.away_score_et != null) {
+      periods.push({ label: "ET", away: game.away_score_et, home: game.home_score_et });
+    }
+    if (game.home_score_pen != null || game.away_score_pen != null) {
+      periods.push({ label: "PEN", away: game.away_score_pen, home: game.home_score_pen });
+    }
+  } else if (isHockeyGame(game, activeSport)) {
     periods = [
       { label: "P1", away: game.away_score_p1, home: game.home_score_p1 },
       { label: "P2", away: game.away_score_p2, home: game.home_score_p2 },
@@ -221,12 +283,15 @@ export default function GameScreen() {
         {/* Scoreboard */}
         <View style={styles.scoreboard}>
           <View style={[styles.teamBlock, awayWins && styles.teamBlockWinner]}>
+            {awayFlag && <Text style={styles.teamFlagLarge}>{awayFlag}</Text>}
             <Text style={styles.teamName} numberOfLines={1} adjustsFontSizeToFit minimumFontScale={0.6}>
               {(away as any)?.short_name ?? away?.name ?? "TBD"}
             </Text>
-            <Text style={styles.teamFullName} numberOfLines={1}>
-              {away?.name ?? ""}
-            </Text>
+            {(away as any)?.short_name && away?.name && (away as any).short_name !== away.name && (
+              <Text style={styles.teamFullName} numberOfLines={1}>
+                {away.name}
+              </Text>
+            )}
             {(isLive || isFinished) && game.away_score != null && (
               <Text style={[styles.score, awayWins && styles.scoreWinner]}>
                 {game.away_score}
@@ -237,12 +302,15 @@ export default function GameScreen() {
           <Text style={styles.vsText}>@</Text>
 
           <View style={[styles.teamBlock, homeWins && styles.teamBlockWinner]}>
+            {homeFlag && <Text style={styles.teamFlagLarge}>{homeFlag}</Text>}
             <Text style={styles.teamName} numberOfLines={1} adjustsFontSizeToFit minimumFontScale={0.6}>
               {(home as any)?.short_name ?? home?.name ?? "TBD"}
             </Text>
-            <Text style={styles.teamFullName} numberOfLines={1}>
-              {home?.name ?? ""}
-            </Text>
+            {(home as any)?.short_name && home?.name && (home as any).short_name !== home.name && (
+              <Text style={styles.teamFullName} numberOfLines={1}>
+                {home.name}
+              </Text>
+            )}
             {(isLive || isFinished) && game.home_score != null && (
               <Text style={[styles.score, homeWins && styles.scoreWinner]}>
                 {game.home_score}
@@ -250,45 +318,6 @@ export default function GameScreen() {
             )}
           </View>
         </View>
-
-        {/* Timeouts — basketball only, live games only */}
-        {isLive && activeSport === "basketball" && (() => {
-          const g = game as BasketballGame;
-          const showTimeouts =
-            g.home_timeouts_remaining != null || g.away_timeouts_remaining != null;
-          if (!showTimeouts) return null;
-
-          const dot = (filled: boolean) => (
-            <View
-              key={Math.random()}
-              style={[styles.timeoutDot, filled ? styles.timeoutDotFull : styles.timeoutDotEmpty]}
-            />
-          );
-
-          const renderDots = (remaining: number | null) => {
-            const total = 7; // NBA: 7 full-game timeouts (2 mandatory + remaining)
-            const used = total - (remaining ?? total);
-            return Array.from({ length: total }, (_, i) => dot(i >= used));
-          };
-
-          return (
-            <View style={styles.timeoutRow}>
-              <View style={styles.timeoutTeam}>
-                <Text style={styles.timeoutLabel}>{away?.abbreviation ?? "AWY"}</Text>
-                <View style={styles.timeoutDots}>
-                  {renderDots(g.away_timeouts_remaining)}
-                </View>
-              </View>
-              <Text style={styles.timeoutTitle}>Timeouts</Text>
-              <View style={[styles.timeoutTeam, styles.timeoutTeamRight]}>
-                <View style={styles.timeoutDots}>
-                  {renderDots(g.home_timeouts_remaining)}
-                </View>
-                <Text style={styles.timeoutLabel}>{home?.abbreviation ?? "HME"}</Text>
-              </View>
-            </View>
-          );
-        })()}
 
         {/* Period breakdown */}
         {hasPeriods && (
@@ -306,7 +335,7 @@ export default function GameScreen() {
               </View>
               <View style={styles.qRow}>
                 <Text style={[styles.qCell, styles.qTeamCell, styles.qTeamName]} numberOfLines={1}>
-                  {away?.abbreviation ?? "AWY"}
+                  {awayFlag ?? away?.abbreviation ?? "AWY"}
                 </Text>
                 {periods.map((p, i) => (
                   <Text key={i} style={styles.qCell}>{p.away ?? "-"}</Text>
@@ -315,7 +344,7 @@ export default function GameScreen() {
               </View>
               <View style={styles.qRow}>
                 <Text style={[styles.qCell, styles.qTeamCell, styles.qTeamName]} numberOfLines={1}>
-                  {home?.abbreviation ?? "HME"}
+                  {homeFlag ?? home?.abbreviation ?? "HME"}
                 </Text>
                 {periods.map((p, i) => (
                   <Text key={i} style={styles.qCell}>{p.home ?? "-"}</Text>
@@ -328,6 +357,39 @@ export default function GameScreen() {
 
         {/* Series / venue info */}
         {(() => {
+          if (isSoccerGame(game, activeSport)) {
+            const g = game as SoccerGame;
+            const hasInfo = g.round || g.venue_name || g.spectators != null;
+            if (!hasInfo) return null;
+            return (
+              <View style={styles.section}>
+                <Text style={styles.sectionTitle}>Game Info</Text>
+                <View style={styles.infoCard}>
+                  {g.round && (
+                    <View style={styles.infoRow}>
+                      <Text style={styles.infoLabel}>Round</Text>
+                      <Text style={styles.infoValue}>{g.round}</Text>
+                    </View>
+                  )}
+                  {g.venue_name && (
+                    <View style={styles.infoRow}>
+                      <Text style={styles.infoLabel}>Venue</Text>
+                      <Text style={styles.infoValue}>
+                        {[g.venue_name, g.venue_city].filter(Boolean).join(", ")}
+                      </Text>
+                    </View>
+                  )}
+                  {g.spectators != null && (
+                    <View style={[styles.infoRow, { borderBottomWidth: 0 }]}>
+                      <Text style={styles.infoLabel}>Attendance</Text>
+                      <Text style={styles.infoValue}>{g.spectators.toLocaleString()}</Text>
+                    </View>
+                  )}
+                </View>
+              </View>
+            );
+          }
+
           if (isHockeyGame(game, activeSport)) {
             const g = game as HockeyGame;
             const hasInfo = g.series_round || g.series_game_num || g.venue_name;
@@ -443,7 +505,9 @@ export default function GameScreen() {
                     {(team as any).short_name ?? team.name}
                   </Text>
                   <Text style={styles.recordWL}>
-                    {isHockeyGame(game, activeSport)
+                    {isSoccerGame(game, activeSport)
+                      ? `${team.wins}-${(team as any).draws}-${team.losses}`
+                      : isHockeyGame(game, activeSport)
                       ? `${team.wins}-${team.losses}${(team as any).overtime_losses != null ? `-${(team as any).overtime_losses}` : ""}`
                       : isFootballGame(game, activeSport)
                       ? `${team.wins}-${team.losses}${(team as any).ties != null && (team as any).ties > 0 ? `-${(team as any).ties}` : ""}`
@@ -512,6 +576,7 @@ function createStyles(colors: Palette) {
     },
     teamBlock: { flex: 1, alignItems: "center", gap: 3 },
     teamBlockWinner: {},
+    teamFlagLarge: { fontSize: 34, marginBottom: 2 },
     teamName: { ...typography.h2, color: colors.text, fontWeight: "800" },
     teamFullName: { ...typography.caption, color: colors.textSecondary },
     score: { ...typography.h1, color: colors.text, fontWeight: "800", marginTop: spacing.xs },
@@ -567,30 +632,5 @@ function createStyles(colors: Palette) {
     },
     infoLabel: { ...typography.label, color: colors.textSecondary, fontWeight: "600" },
     infoValue: { ...typography.label, color: colors.text, flex: 1, textAlign: "right" },
-    timeoutRow: {
-      flexDirection: "row",
-      alignItems: "center",
-      justifyContent: "space-between",
-      backgroundColor: colors.card,
-      borderRadius: radius.md,
-      paddingVertical: spacing.sm,
-      paddingHorizontal: spacing.md,
-      marginBottom: spacing.md,
-    },
-    timeoutTeam: { flexDirection: "row", alignItems: "center", gap: 6, flex: 1 },
-    timeoutTeamRight: { justifyContent: "flex-end" },
-    timeoutLabel: { ...typography.label, color: colors.text, fontWeight: "700", minWidth: 32 },
-    timeoutTitle: {
-      ...typography.caption,
-      color: colors.textSecondary,
-      fontWeight: "600",
-      textTransform: "uppercase",
-      letterSpacing: 0.4,
-      textAlign: "center",
-    },
-    timeoutDots: { flexDirection: "row", gap: 3 },
-    timeoutDot: { width: 8, height: 8, borderRadius: 4 },
-    timeoutDotFull: { backgroundColor: colors.primary },
-    timeoutDotEmpty: { backgroundColor: colors.border },
   });
 }

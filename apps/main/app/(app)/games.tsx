@@ -2,6 +2,7 @@ import React, { useCallback, useEffect, useMemo, useRef, useState } from "react"
 import {
   FlatList,
   SectionList,
+  ScrollView,
   View,
   Text,
   TextInput,
@@ -12,8 +13,20 @@ import {
 } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { useRouter } from "expo-router";
-import { basketball, hockey, football, useSport, joinBasketballGamesChannel, type BasketballGame, type HockeyGame, type FootballGame } from "@juno/api";
-import { useTheme, spacing, typography, radius, type Palette } from "@juno/ui";
+import {
+  basketball,
+  hockey,
+  football,
+  soccer,
+  useSport,
+  joinBasketballGamesChannel,
+  joinSoccerGamesChannel,
+  type BasketballGame,
+  type HockeyGame,
+  type FootballGame,
+  type SoccerGame,
+} from "@juno/api";
+import { useTheme, spacing, typography, radius, countryFlag, type Palette } from "@juno/ui";
 
 type FilterTab = "live" | "upcoming" | "final";
 
@@ -111,6 +124,8 @@ function GameCardShell({
   statusLabel,
   onPress,
   children,
+  awayFlag,
+  homeFlag,
 }: {
   game: SharedGame;
   isLive: boolean;
@@ -118,6 +133,8 @@ function GameCardShell({
   statusLabel?: string;
   onPress: () => void;
   children?: React.ReactNode;
+  awayFlag?: string | null;
+  homeFlag?: string | null;
 }) {
   const { colors } = useTheme();
   const styles = useMemo(() => createStyles(colors), [colors]);
@@ -163,6 +180,7 @@ function GameCardShell({
       <View style={[styles.teamsContainer, isLive && styles.teamsContainerLive]}>
         <TeamScoreRow
           abbrev={game.away_team?.abbreviation ?? null}
+          flag={awayFlag}
           name={game.away_team?.name ?? "TBD"}
           fullName={game.away_team?.full_name}
           score={game.away_score}
@@ -172,6 +190,7 @@ function GameCardShell({
         />
         <TeamScoreRow
           abbrev={game.home_team?.abbreviation ?? null}
+          flag={homeFlag}
           name={game.home_team?.name ?? "TBD"}
           fullName={game.home_team?.full_name}
           score={game.home_score}
@@ -189,6 +208,7 @@ function GameCardShell({
 
 function TeamScoreRow({
   abbrev,
+  flag,
   name,
   fullName,
   score,
@@ -197,6 +217,7 @@ function TeamScoreRow({
   loser,
 }: {
   abbrev: string | null;
+  flag?: string | null;
   name: string;
   fullName?: string | null;
   score: number | null;
@@ -209,14 +230,18 @@ function TeamScoreRow({
 
   return (
     <View style={styles.teamRow}>
-      <Text style={[styles.teamAbbrev, loser && styles.teamMuted]} numberOfLines={1}>
-        {abbrev ?? name.slice(0, 3).toUpperCase()}
-      </Text>
+      {flag ? (
+        <Text style={styles.teamFlag}>{flag}</Text>
+      ) : (
+        <Text style={[styles.teamAbbrev, loser && styles.teamMuted]} numberOfLines={1}>
+          {abbrev ?? name.slice(0, 3).toUpperCase()}
+        </Text>
+      )}
       <View style={styles.teamNameCol}>
         <Text style={[styles.teamName, loser && styles.teamMuted]} numberOfLines={1}>
           {name}
         </Text>
-        {fullName ? (
+        {fullName && fullName !== name ? (
           <Text style={[styles.teamFullName, loser && styles.teamMuted]} numberOfLines={1}>
             {fullName}
           </Text>
@@ -841,6 +866,321 @@ function FootballGamesView() {
 }
 
 // ---------------------------------------------------------------------------
+// Soccer — helpers
+// ---------------------------------------------------------------------------
+function soccerPeriodLabel(game: SoccerGame): string {
+  if (game.status_detail === "HT") return "HT";
+  if (!game.period) return game.status_detail ?? "LIVE";
+  switch (game.period) {
+    case 1:
+      return "1H";
+    case 2:
+      return "2H";
+    case 3:
+      return "ET1";
+    case 4:
+      return "ET2";
+    case 5:
+      return "PEN";
+    default:
+      return game.status_detail ?? "LIVE";
+  }
+}
+
+function SoccerGameCard({ game, onPress }: { game: SoccerGame; onPress: () => void }) {
+  const isLive = game.status === "live";
+  const isFinished = game.status === "finished";
+
+  // Team "abbreviation" is unreliable for national teams (often a literal
+  // "TBD" placeholder until the matchup is confirmed) — a flag derived from
+  // the team/country name is more useful and always correct once known.
+  return (
+    <GameCardShell
+      game={game}
+      isLive={isLive}
+      isFinished={isFinished}
+      statusLabel={isLive ? soccerPeriodLabel(game) : undefined}
+      onPress={onPress}
+      awayFlag={countryFlag(game.away_team?.name)}
+      homeFlag={countryFlag(game.home_team?.name)}
+    />
+  );
+}
+
+type SoccerLeague = "all" | "EPL" | "LaLiga" | "SerieA" | "Bundesliga" | "Ligue1" | "MLS" | "UCL" | "UEL" | "WorldCup";
+const SOCCER_LEAGUE_FILTERS: { key: SoccerLeague; label: string }[] = [
+  { key: "all", label: "All" },
+  { key: "EPL", label: "EPL" },
+  { key: "LaLiga", label: "La Liga" },
+  { key: "SerieA", label: "Serie A" },
+  { key: "Bundesliga", label: "Bundesliga" },
+  { key: "Ligue1", label: "Ligue 1" },
+  { key: "MLS", label: "MLS" },
+  { key: "UCL", label: "UCL" },
+  { key: "UEL", label: "UEL" },
+  { key: "WorldCup", label: "World Cup" },
+];
+
+// Soccer fixtures (especially tournaments like the World Cup) can span many
+// days, so games are grouped into date sections rather than one flat list —
+// a bare "6:00 PM" / "11:00 PM" / "1:00 PM" list reads as out-of-order when
+// those times are actually on different days.
+function localDateKey(iso: string): string {
+  const d = new Date(iso);
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
+}
+
+function soccerSectionTitle(key: string): string {
+  if (key === "9999-99-99") return "Date TBD";
+  const today = new Date();
+  const tomorrow = new Date(today);
+  tomorrow.setDate(today.getDate() + 1);
+  if (key === localDateKey(today.toISOString())) return "Today";
+  if (key === localDateKey(tomorrow.toISOString())) return "Tomorrow";
+  return new Date(`${key}T00:00:00`).toLocaleDateString([], {
+    weekday: "long",
+    month: "short",
+    day: "numeric",
+  });
+}
+
+type SoccerDateSection = { key: string; title: string; data: SoccerGame[] };
+
+function groupSoccerByDate(games: SoccerGame[], descending: boolean): SoccerDateSection[] {
+  const map = new Map<string, SoccerGame[]>();
+  for (const g of games) {
+    const key = g.scheduled_at ? localDateKey(g.scheduled_at) : "9999-99-99";
+    if (!map.has(key)) map.set(key, []);
+    map.get(key)!.push(g);
+  }
+  const sortedKeys = Array.from(map.keys()).sort();
+  if (descending) sortedKeys.reverse();
+  return sortedKeys.map((key) => ({
+    key,
+    title: soccerSectionTitle(key),
+    data: map
+      .get(key)!
+      .slice()
+      .sort((a, b) => (a.scheduled_at ?? "").localeCompare(b.scheduled_at ?? "")),
+  }));
+}
+
+// ---------------------------------------------------------------------------
+// Soccer games view
+// ---------------------------------------------------------------------------
+function SoccerGamesView() {
+  const { colors } = useTheme();
+  const styles = useMemo(() => createStyles(colors), [colors]);
+  const router = useRouter();
+
+  const [tab, setTab] = useState<FilterTab>("live");
+  const [leagueFilter, setLeagueFilter] = useState<SoccerLeague>("all");
+  const [games, setGames] = useState<SoccerGame[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [refreshing, setRefreshing] = useState(false);
+  const [query, setQuery] = useState("");
+  const initialAutoSwitch = useRef(true);
+
+  // Live tab: subscribe to WebSocket channel for real-time score updates.
+  useEffect(() => {
+    if (tab !== "live") return;
+    setLoading(true);
+
+    const channel = joinSoccerGamesChannel({
+      onState: (incoming) => {
+        setGames(incoming);
+        setLoading(false);
+      },
+      onDelta: (changed) => {
+        setGames((prev) => {
+          const map = new Map(prev.map((g) => [g.id, g]));
+          changed.forEach((g) => map.set(g.id, g));
+          return Array.from(map.values());
+        });
+      },
+    });
+
+    return () => {
+      channel.leave();
+    };
+  }, [tab]);
+
+  // Upcoming / Final tabs: REST API.
+  const load = useCallback(async (filter: FilterTab, league: SoccerLeague) => {
+    const params: Parameters<typeof soccer.getGames>[0] = {};
+    if (league !== "all") params.league = league;
+    if (filter === "upcoming") params.status = "scheduled";
+    else params.status = "finished";
+    const { data } = await soccer.getGames(params);
+    setGames(data);
+  }, []);
+
+  useEffect(() => {
+    if (tab === "live") return; // handled by channel above
+    setLoading(true);
+    setQuery("");
+    load(tab, leagueFilter).finally(() => setLoading(false));
+  }, [tab, leagueFilter, load]);
+
+  // Auto-switch to Upcoming if no live games on first load
+  useEffect(() => {
+    if (!loading && tab === "live" && games.length === 0 && initialAutoSwitch.current) {
+      initialAutoSwitch.current = false;
+      setTab("upcoming");
+    }
+  }, [loading, games.length, tab]);
+
+  function onRefresh() {
+    if (tab === "live") return; // socket pushes updates automatically
+    setRefreshing(true);
+    load(tab, leagueFilter).finally(() => setRefreshing(false));
+  }
+
+  const hasLive = tab === "live" && games.length > 0;
+
+  const filteredGames = useMemo(() => {
+    let result = games;
+    if (tab === "live" && leagueFilter !== "all") {
+      result = result.filter((g) => g.league === leagueFilter);
+    }
+    const q = query.trim().toLowerCase();
+    if (q) {
+      result = result.filter(
+        (g) =>
+          g.home_team?.name?.toLowerCase().includes(q) ||
+          g.home_team?.full_name?.toLowerCase().includes(q) ||
+          g.home_team?.abbreviation?.toLowerCase().includes(q) ||
+          g.away_team?.name?.toLowerCase().includes(q) ||
+          g.away_team?.full_name?.toLowerCase().includes(q) ||
+          g.away_team?.abbreviation?.toLowerCase().includes(q)
+      );
+    }
+    return result;
+  }, [games, tab, leagueFilter, query]);
+
+  const liveGames = useMemo(
+    () =>
+      tab === "live"
+        ? filteredGames.slice().sort((a, b) => (a.scheduled_at ?? "").localeCompare(b.scheduled_at ?? ""))
+        : [],
+    [filteredGames, tab]
+  );
+
+  const dateSections = useMemo(
+    () => (tab === "live" ? [] : groupSoccerByDate(filteredGames, tab === "final")),
+    [filteredGames, tab]
+  );
+
+  const emptyTitle = query.trim() ? "No results" : tab === "live" ? "Nothing live" : "No games found";
+  const emptyMessage = query.trim()
+    ? `No games matching "${query}".`
+    : tab === "live"
+    ? "No games are live right now."
+    : tab === "upcoming"
+    ? "Check back when the schedule is released."
+    : "No finished games found.";
+
+  return (
+    <SafeAreaView style={styles.container} edges={["left", "right"]}>
+      <View style={styles.tabBar}>
+        {TABS.map((t) => (
+          <TouchableOpacity
+            key={t.key}
+            style={[styles.tabItem, tab === t.key && styles.tabItemActive]}
+            onPress={() => setTab(t.key)}
+            activeOpacity={0.7}
+          >
+            {t.key === "live" && tab !== "live" && hasLive && <View style={styles.nflLiveDotTab} />}
+            <Text style={[styles.tabLabel, tab === t.key && styles.tabLabelActive]}>{t.label}</Text>
+          </TouchableOpacity>
+        ))}
+      </View>
+
+      <View style={styles.soccerLeagueBar}>
+        <ScrollView
+          horizontal
+          showsHorizontalScrollIndicator={false}
+          contentContainerStyle={styles.soccerLeagueBarContent}
+        >
+          {SOCCER_LEAGUE_FILTERS.map((f) => (
+            <TouchableOpacity
+              key={f.key}
+              style={[styles.nflLeagueChip, leagueFilter === f.key && styles.nflLeagueChipActive]}
+              onPress={() => setLeagueFilter(f.key)}
+              activeOpacity={0.7}
+            >
+              <Text style={[styles.nflLeagueChipText, leagueFilter === f.key && styles.nflLeagueChipTextActive]}>
+                {f.label}
+              </Text>
+            </TouchableOpacity>
+          ))}
+        </ScrollView>
+      </View>
+
+      <View style={styles.searchBar}>
+        <TextInput
+          style={styles.searchInput}
+          placeholder="Search teams…"
+          value={query}
+          onChangeText={setQuery}
+          placeholderTextColor={colors.textSecondary}
+          returnKeyType="search"
+          clearButtonMode="while-editing"
+        />
+      </View>
+
+      {loading ? (
+        <View style={styles.center}>
+          <ActivityIndicator color={colors.primary} />
+        </View>
+      ) : tab === "live" ? (
+        liveGames.length === 0 ? (
+          <View style={styles.emptyWrap}>
+            <Text style={styles.emptyTitle}>{emptyTitle}</Text>
+            <Text style={styles.emptyText}>{emptyMessage}</Text>
+          </View>
+        ) : (
+          <FlatList
+            data={liveGames}
+            keyExtractor={(g) => g.id}
+            contentContainerStyle={styles.listContent}
+            refreshControl={
+              <RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor={colors.primary} />
+            }
+            renderItem={({ item }) => (
+              <SoccerGameCard game={item} onPress={() => router.push(`/game/${item.id}`)} />
+            )}
+          />
+        )
+      ) : dateSections.length === 0 ? (
+        <View style={styles.emptyWrap}>
+          <Text style={styles.emptyTitle}>{emptyTitle}</Text>
+          <Text style={styles.emptyText}>{emptyMessage}</Text>
+        </View>
+      ) : (
+        <SectionList
+          sections={dateSections}
+          keyExtractor={(g) => g.id}
+          contentContainerStyle={styles.nflListContent}
+          stickySectionHeadersEnabled
+          refreshControl={
+            <RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor={colors.primary} />
+          }
+          renderSectionHeader={({ section: s }) => (
+            <View style={styles.nflWeekHeader}>
+              <Text style={styles.nflWeekTitle}>{(s as SoccerDateSection).title}</Text>
+            </View>
+          )}
+          renderItem={({ item }) => (
+            <SoccerGameCard game={item} onPress={() => router.push(`/game/${item.id}`)} />
+          )}
+        />
+      )}
+    </SafeAreaView>
+  );
+}
+
+// ---------------------------------------------------------------------------
 // Shared list shell
 // ---------------------------------------------------------------------------
 function GamesListView<T extends { id: string }>({
@@ -949,6 +1289,7 @@ export default function GamesScreen() {
   const { activeSport } = useSport();
   if (activeSport === "hockey") return <HockeyGamesView />;
   if (activeSport === "football") return <FootballGamesView />;
+  if (activeSport === "soccer") return <SoccerGamesView />;
   return <BasketballGamesView />;
 }
 
@@ -1085,6 +1426,10 @@ function createStyles(colors: Palette) {
       width: 36,
       letterSpacing: 0.3,
     },
+    teamFlag: {
+      fontSize: 22,
+      width: 36,
+    },
     teamNameCol: {
       flex: 1,
       gap: 1,
@@ -1130,6 +1475,22 @@ function createStyles(colors: Palette) {
       backgroundColor: colors.surface,
       borderBottomWidth: StyleSheet.hairlineWidth,
       borderBottomColor: colors.divider,
+    },
+    // ── Soccer league bar — a plain View pins the height; giving a fixed
+    // height directly to a horizontal ScrollView's own style isn't reliably
+    // respected, so the ScrollView just fills this fixed-height wrapper ──
+    soccerLeagueBar: {
+      height: 52,
+      flexGrow: 0,
+      flexShrink: 0,
+      backgroundColor: colors.surface,
+      borderBottomWidth: StyleSheet.hairlineWidth,
+      borderBottomColor: colors.divider,
+    },
+    soccerLeagueBarContent: {
+      alignItems: "center",
+      gap: spacing.xs,
+      paddingHorizontal: spacing.md,
     },
     nflLeagueChip: {
       paddingHorizontal: spacing.md,

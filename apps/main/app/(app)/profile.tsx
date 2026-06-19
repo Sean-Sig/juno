@@ -19,6 +19,7 @@ const SPORT_META: Record<Sport, { emoji: string; label: string }> = {
   basketball: { emoji: "🏀", label: "Basketball" },
   hockey: { emoji: "🏒", label: "Hockey" },
   football: { emoji: "🏈", label: "Football" },
+  soccer: { emoji: "⚽", label: "Soccer" },
 };
 
 export default function ProfileScreen() {

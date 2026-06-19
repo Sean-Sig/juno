@@ -11,12 +11,12 @@ import {
 import { SafeAreaView } from "react-native-safe-area-context";
 import { useLocalSearchParams, useNavigation, useRouter } from "expo-router";
 import { Ionicons } from "@expo/vector-icons";
-import { golf, tennis, basketball, hockey, football, GolfPlayer, GolfPlayerScore, TennisPlayer, TennisMatch, BasketballPlayer, HockeyPlayer, FootballPlayer, useAuth, useSport, type Sport } from "@juno/api";
+import { golf, tennis, basketball, hockey, football, soccer, GolfPlayer, GolfPlayerScore, TennisPlayer, TennisMatch, BasketballPlayer, HockeyPlayer, FootballPlayer, SoccerPlayer, useAuth, useSport, type Sport } from "@juno/api";
 import { useTheme, spacing, typography, radius, type Palette } from "@juno/ui";
 import { useFollowedPlayers } from "../../../context/FollowedPlayersContext";
 import { useScoutLineup } from "../../../context/ScoutLineupContext";
 
-type Player = GolfPlayer | TennisPlayer | BasketballPlayer | HockeyPlayer | FootballPlayer;
+type Player = GolfPlayer | TennisPlayer | BasketballPlayer | HockeyPlayer | FootballPlayer | SoccerPlayer;
 
 const ROUND_ORDER: Record<string, number> = {
   R128: 0, R64: 1, R32: 2, R16: 3, QF: 4, SF: 5, F: 6,
@@ -59,6 +59,13 @@ function getRankStats(player: Player, sport: Sport) {
       p.jersey_number != null && { label: "Jersey", value: `#${p.jersey_number}` },
       p.league != null && { label: "League", value: p.league },
     ].filter(Boolean) as { label: string; value: string }[];
+  } else if (sport === "soccer") {
+    const p = player as SoccerPlayer;
+    return [
+      p.position != null && { label: "Position", value: p.position },
+      p.jersey_number != null && { label: "Jersey", value: `#${p.jersey_number}` },
+      p.league != null && { label: "League", value: p.league },
+    ].filter(Boolean) as { label: string; value: string }[];
   } else {
     const p = player as BasketballPlayer;
     return [
@@ -89,7 +96,13 @@ export default function PlayerScreen() {
   const [tournamentMatches, setTournamentMatches] = useState<TennisMatch[]>([]);
   const [playerMap, setPlayerMap] = useState<Map<string, TennisPlayer>>(new Map());
 
-  const api = activeSport === "golf" ? golf : activeSport === "tennis" ? tennis : activeSport === "hockey" ? hockey : activeSport === "football" ? football : basketball;
+  const api =
+    activeSport === "golf" ? golf :
+    activeSport === "tennis" ? tennis :
+    activeSport === "hockey" ? hockey :
+    activeSport === "football" ? football :
+    activeSport === "soccer" ? soccer :
+    basketball;
   const followed = id ? isFollowed(id) : false;
 
   const backDestination = from === "matches" ? "/(app)/matches" : "/(app)/rankings";
