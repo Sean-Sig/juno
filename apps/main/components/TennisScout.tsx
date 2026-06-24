@@ -12,9 +12,9 @@ import {
   Animated,
   Easing,
   FlatList,
-  Image,
   SectionList,
 } from "react-native";
+import { Image } from "expo-image";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { Ionicons } from "@expo/vector-icons";
 import { useRouter } from "expo-router";
@@ -155,7 +155,7 @@ function PlayerRow({
       <View style={styles.playerRow}>
         {/* Photo */}
         {player.photo ? (
-          <Image source={{ uri: player.photo }} style={styles.playerPhoto} />
+          <Image source={{ uri: player.photo }} style={styles.playerPhoto} cachePolicy="memory-disk" />
         ) : (
           <View style={[styles.playerPhoto, styles.playerPhotoFallback]}>
             <Text style={[styles.playerInitials, { color: colors.textSecondary }]}>
@@ -293,7 +293,7 @@ function FollowedSheet({
                     activeOpacity={0.7}
                   >
                     {p.photo ? (
-                      <Image source={{ uri: p.photo }} style={styles.sheetPhoto} />
+                      <Image source={{ uri: p.photo }} style={styles.sheetPhoto} cachePolicy="memory-disk" />
                     ) : (
                       <View style={[styles.sheetPhoto, styles.playerPhotoFallback]}>
                         <Text style={{ color: colors.textSecondary, fontWeight: "600" }}>

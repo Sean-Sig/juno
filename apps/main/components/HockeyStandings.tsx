@@ -10,7 +10,10 @@ import {
   TextInput,
   TouchableOpacity,
   ScrollView,
+  KeyboardAvoidingView,
+  Platform,
 } from "react-native";
+import { Image } from "expo-image";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { useRouter } from "expo-router";
 import { hockey, type HockeyTeam, type HockeyPlayer } from "@juno/api";
@@ -23,18 +26,29 @@ import { useFollowedPlayers } from "../context/FollowedPlayersContext";
 
 type ViewMode = "teams" | "players";
 type Section = { title: string; data: HockeyTeam[] };
-type PositionFilter = "all" | "C" | "LW" | "RW" | "D" | "G";
+type PositionFilter = "all" | "F" | "D" | "G";
 
 const POSITIONS: { key: PositionFilter; label: string }[] = [
   { key: "all", label: "All" },
-  { key: "C", label: "Center" },
-  { key: "LW", label: "Left Wing" },
-  { key: "RW", label: "Right Wing" },
+  { key: "F", label: "Forward" },
   { key: "D", label: "Defense" },
   { key: "G", label: "Goalie" },
 ];
 
 const PER_PAGE = 50;
+
+/** Normalize full position names to abbreviations for filtering. The API only
+ * exposes three buckets (forward / defenceman / goaltender) — no center/wing
+ * breakdown — so all forward variants collapse to "F". */
+function normalizePosition(pos: string | null | undefined): string {
+  if (!pos) return "";
+  const upper = pos.trim().toUpperCase();
+  if (upper.includes("FORWARD") || upper.includes("WING") || upper.includes("CENTER") || upper.includes("CENTRE")) return "F";
+  if (upper.includes("DEFEN")) return "D";
+  if (upper.includes("GOAL")) return "G";
+  // Return as-is if already abbreviated
+  return upper;
+}
 
 // ---------------------------------------------------------------------------
 // Teams view helpers
@@ -77,6 +91,9 @@ function TeamRow({ team, rank }: { team: HockeyTeam; rank: number }) {
   return (
     <View style={styles.teamRow}>
       <Text style={styles.rank}>{rank}</Text>
+      {team.logo ? (
+        <Image source={{ uri: team.logo }} style={styles.teamLogo} cachePolicy="memory-disk" contentFit="contain" />
+      ) : null}
       <View style={styles.nameCol}>
         <Text style={styles.teamName} numberOfLines={1}>
           {team.name}
@@ -248,14 +265,15 @@ function PlayersView({ colors }: { colors: Palette }) {
 
   const displayed = useMemo(() => {
     if (position === "all") return players;
-    return players.filter((p) => {
-      const pos = (p.position ?? "").toUpperCase();
-      return pos === position;
-    });
+    return players.filter((p) => normalizePosition(p.position) === position);
   }, [players, position]);
 
   return (
-    <View style={{ flex: 1 }}>
+    <KeyboardAvoidingView
+      style={{ flex: 1 }}
+      behavior={Platform.OS === "ios" ? "padding" : undefined}
+      keyboardVerticalOffset={Platform.OS === "ios" ? 90 : 0}
+    >
       {/* Search bar */}
       <View style={styles.searchBar}>
         <TextInput
@@ -299,7 +317,7 @@ function PlayersView({ colors }: { colors: Palette }) {
         <FlatList
           data={displayed}
           keyExtractor={(p) => p.id}
-          contentContainerStyle={styles.playerList}
+          contentContainerStyle={[styles.playerList, displayed.length === 0 && styles.playerListEmpty]}
           refreshControl={
             <RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor={colors.primary} />
           }
@@ -312,7 +330,8 @@ function PlayersView({ colors }: { colors: Palette }) {
             <PlayerCard
               firstName={item.display_first_name ?? item.first_name}
               lastName={item.display_last_name ?? item.last_name}
-              country={[item.position, item.country].filter(Boolean).join(" · ") || null}
+              country={item.country}
+              subtitle={item.position}
               photo={item.photo}
               rank={item.jersey_number != null ? parseInt(item.jersey_number, 10) || null : null}
               rankLabel="No."
@@ -324,7 +343,7 @@ function PlayersView({ colors }: { colors: Palette }) {
           ListEmptyComponent={<Text style={styles.empty}>No players found.</Text>}
         />
       )}
-    </View>
+    </KeyboardAvoidingView>
   );
 }
 
@@ -429,6 +448,7 @@ function createStyles(colors: Palette) {
       backgroundColor: colors.background,
     },
     rank: { ...typography.caption, color: colors.textSecondary, width: 22, textAlign: "center" },
+    teamLogo: { width: 24, height: 24, marginLeft: spacing.xs },
     nameCol: { flex: 1, paddingHorizontal: spacing.xs },
     teamName: { ...typography.label, color: colors.text, fontWeight: "600" },
     teamAbbrev: { ...typography.caption, color: colors.textSecondary },
@@ -463,7 +483,8 @@ function createStyles(colors: Palette) {
     typeChipText: { ...typography.label, color: colors.textSecondary },
     typeChipTextActive: { color: colors.textOnPrimary, fontWeight: "700" },
     playerList: { padding: spacing.md, paddingTop: 0 },
+    playerListEmpty: { flexGrow: 1, justifyContent: "center" },
     footerSpinner: { marginVertical: spacing.md },
-    empty: { ...typography.body, color: colors.textSecondary, textAlign: "center", marginTop: spacing.lg },
+    empty: { ...typography.body, color: colors.textSecondary, textAlign: "center" },
   });
 }

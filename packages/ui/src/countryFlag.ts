@@ -149,6 +149,14 @@ const NAME_TO_ISO2: Record<string, string> = {
   "Guatemala": "GT",
   "Nicaragua": "NI",
   "Dominican Republic": "DO",
+  "Israel": "IL",
+  "Bahamas": "BS",
+  "The Bahamas": "BS",
+  "Puerto Rico": "PR",
+  "Guinea": "GN",
+  "Equatorial Guinea": "GQ",
+  "Papua New Guinea": "PG",
+  "South Sudan": "SS",
 };
 
 // Nations with subdivision flags or no ISO code — returned as literal emoji.

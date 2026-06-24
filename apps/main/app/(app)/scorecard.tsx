@@ -1,4 +1,4 @@
-import React, { useMemo, useEffect } from "react";
+import React, { useMemo, useEffect, useState } from "react";
 import {
   View,
   Text,
@@ -41,6 +41,22 @@ function parColor(par: number, colors: Palette): string {
   if (par < 0) return colors.primary;
   if (par > 0) return colors.error ?? "#ef4444";
   return colors.textSecondary;
+}
+
+function hasHoleData(detail: GolfRoundDetail | undefined): boolean {
+  return !!(
+    (detail?.scores && Object.keys(detail.scores).length > 0) ||
+    (detail?.to_pars && Object.keys(detail.to_pars).length > 0)
+  );
+}
+
+function holeScoreColors(toPar: number | null, colors: Palette) {
+  if (toPar == null)  return { bg: "transparent", border: colors.border, text: colors.text };
+  if (toPar <= -2)    return { bg: "#EAB308",      border: "#EAB308",      text: "#fff" }; // eagle – gold
+  if (toPar === -1)   return { bg: colors.primary, border: colors.primary, text: "#fff" }; // birdie – green
+  if (toPar === 0)    return { bg: "transparent",  border: colors.border,  text: colors.text }; // par
+  if (toPar === 1)    return { bg: "transparent",  border: colors.error ?? "#ef4444", text: colors.error ?? "#ef4444" }; // bogey
+  return               { bg: colors.error ?? "#ef4444", border: colors.error ?? "#ef4444", text: "#fff" }; // double+
 }
 
 // ---------------------------------------------------------------------------
@@ -87,6 +103,12 @@ export default function ScorecardScreen() {
   // Course par from the primary course (fall back to 72)
   const primaryCourse = courses.find((c) => c.primary_course) ?? courses[0];
   const coursePar = primaryCourse?.total_par ?? 72;
+
+  // Which round's hole-by-hole grid to show — defaults to the most recent round with hole data
+  const roundsWithHoles = rounds.filter(({ detail }) => hasHoleData(detail));
+  const [selectedRoundKey, setSelectedRoundKey] = useState<string | null>(null);
+  const displayRoundKey = selectedRoundKey ?? roundsWithHoles[roundsWithHoles.length - 1]?.key ?? null;
+  const displayDetail = displayRoundKey ? details[displayRoundKey] : null;
 
   useEffect(() => {
     navigation.setOptions({
@@ -168,10 +190,20 @@ export default function ScorecardScreen() {
                     ? `Thru ${detail.thru}`
                     : null;
 
+                  const tappable = hasHoleData(detail);
+                  const isActive = tappable && displayRoundKey === key;
+
                   return (
-                    <View
+                    <TouchableOpacity
                       key={key}
-                      style={[styles.tableRow, isLast && styles.tableRowLast]}
+                      disabled={!tappable}
+                      activeOpacity={0.7}
+                      onPress={() => setSelectedRoundKey(isActive ? null : key)}
+                      style={[
+                        styles.tableRow,
+                        isLast && styles.tableRowLast,
+                        isActive && styles.tableRowActive,
+                      ]}
                     >
                       <View style={[styles.colRound, { flexDirection: "row", alignItems: "center", gap: 6 }]}>
                         <Text style={styles.roundLabel}>{ROUND_LABELS[key] ?? key}</Text>
@@ -188,7 +220,7 @@ export default function ScorecardScreen() {
                       <Text style={[styles.td, styles.colRunning, { color: parColor(running, colors) }]}>
                         {formatPar(running)}
                       </Text>
-                    </View>
+                    </TouchableOpacity>
                   );
                 });
               })()}
@@ -206,12 +238,125 @@ export default function ScorecardScreen() {
               )}
             </View>
 
+            {/* ── Hole-by-hole grid for the selected round ─────────────── */}
+            {displayDetail && hasHoleData(displayDetail) && (
+              <HoleGrid detail={displayDetail} colors={colors} styles={styles} />
+            )}
+
             {/* ── Round breakdown bars ─────────────────────────────────── */}
             <RoundBars rounds={rounds} coursePar={coursePar} colors={colors} styles={styles} />
           </>
         )}
       </ScrollView>
     </SafeAreaView>
+  );
+}
+
+// ---------------------------------------------------------------------------
+// Hole-by-hole grid — shown below the round table for the selected round
+// ---------------------------------------------------------------------------
+
+const HOLE_TOTAL_COL = 36;
+
+function HoleGrid({
+  detail,
+  colors,
+  styles,
+}: {
+  detail: GolfRoundDetail;
+  colors: Palette;
+  styles: ReturnType<typeof createStyles>;
+}) {
+  return (
+    <View style={styles.holeGrid}>
+      <HoleHalf holes={[1, 2, 3, 4, 5, 6, 7, 8, 9]} label="OUT" detail={detail} colors={colors} />
+      <View style={styles.holeGridDivider} />
+      <HoleHalf holes={[10, 11, 12, 13, 14, 15, 16, 17, 18]} label="IN" detail={detail} colors={colors} />
+    </View>
+  );
+}
+
+function HoleHalf({
+  holes,
+  label,
+  detail,
+  colors,
+}: {
+  holes: number[];
+  label: string;
+  detail: GolfRoundDetail;
+  colors: Palette;
+}) {
+  const played = holes.filter((h) => detail.scores?.[String(h)] != null);
+  const totalStrokes = played.reduce((s, h) => s + (detail.scores![String(h)] ?? 0), 0);
+  const totalPar = played.reduce((s, h) => s + (detail.course_pars?.[String(h)] ?? 0), 0);
+  const halfToPar = played.length > 0 ? totalStrokes - totalPar : null;
+
+  const headerStyle: object = { fontSize: 10, fontWeight: "700" as const, color: colors.textSecondary, textAlign: "center" as const, flex: 1 };
+  const parStyle: object = { fontSize: 10, color: colors.textSecondary, textAlign: "center" as const, flex: 1, marginTop: 2 };
+
+  return (
+    <View>
+      {/* Row 1: hole numbers */}
+      <View style={{ flexDirection: "row", alignItems: "center" }}>
+        {holes.map((h) => (
+          <Text key={h} style={headerStyle}>{h}</Text>
+        ))}
+        <Text style={{ ...headerStyle, flex: 0, width: HOLE_TOTAL_COL }}>{label}</Text>
+      </View>
+
+      {/* Row 2: par */}
+      <View style={{ flexDirection: "row", alignItems: "center" }}>
+        {holes.map((h) => (
+          <Text key={h} style={parStyle}>{detail.course_pars?.[String(h)] ?? "—"}</Text>
+        ))}
+        <Text style={{ ...parStyle, flex: 0, width: HOLE_TOTAL_COL, fontWeight: "600" as const }}>
+          {totalPar || "—"}
+        </Text>
+      </View>
+
+      {/* Row 3: player scores */}
+      <View style={{ flexDirection: "row", alignItems: "center", marginTop: 4 }}>
+        {holes.map((h) => {
+          const strokes = detail.scores?.[String(h)] ?? null;
+          const toPar = detail.to_pars?.[String(h)] ?? null;
+          const { bg, border, text } = holeScoreColors(strokes != null ? toPar : null, colors);
+          const isCircle = toPar != null && toPar <= 0;
+          return (
+            <View key={h} style={{ flex: 1, alignItems: "center" }}>
+              {strokes != null ? (
+                <View style={{
+                  width: 22, height: 22,
+                  borderRadius: isCircle ? 11 : 3,
+                  backgroundColor: bg,
+                  borderWidth: 1.5,
+                  borderColor: border,
+                  alignItems: "center",
+                  justifyContent: "center",
+                }}>
+                  <Text style={{ fontSize: 11, fontWeight: "700", color: text }}>{strokes}</Text>
+                </View>
+              ) : (
+                <Text style={{ fontSize: 11, color: colors.border }}>·</Text>
+              )}
+            </View>
+          );
+        })}
+        {/* Half total */}
+        <View style={{ flex: 0, width: HOLE_TOTAL_COL, alignItems: "center" }}>
+          {played.length > 0 && (
+            <Text style={{
+              fontSize: 13, fontWeight: "700",
+              color: halfToPar != null && halfToPar < 0 ? colors.primary
+                   : halfToPar != null && halfToPar > 0 ? (colors.error ?? "#ef4444")
+                   : colors.text,
+            }}>
+              {totalStrokes}
+            </Text>
+          )}
+        </View>
+      </View>
+    </View>
   );
 }
 
@@ -353,6 +498,9 @@ function createStyles(colors: Palette) {
     tableRowLast: {
       borderBottomWidth: 0,
     },
+    tableRowActive: {
+      backgroundColor: colors.primary + "10",
+    },
     roundLabel: { ...typography.body, color: colors.text, fontWeight: "600" },
     thruBadge: {
       paddingHorizontal: 6,
@@ -384,6 +532,24 @@ function createStyles(colors: Palette) {
     colStrokes: { width: 64, textAlign: "right" },
     colPar: { width: 64, textAlign: "right" },
     colRunning: { width: 72, textAlign: "right" },
+
+    // Hole-by-hole grid
+    holeGrid: {
+      marginHorizontal: spacing.md,
+      marginTop: spacing.xs,
+      backgroundColor: colors.card,
+      borderRadius: radius.md,
+      padding: spacing.md,
+      shadowColor: "#000",
+      shadowOpacity: 0.05,
+      shadowRadius: 4,
+      elevation: 2,
+    },
+    holeGridDivider: {
+      height: StyleSheet.hairlineWidth,
+      backgroundColor: colors.border,
+      marginVertical: spacing.xs,
+    },
 
     // Round bars
     barsSection: {

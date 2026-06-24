@@ -1,18 +1,23 @@
 import React, { useMemo } from "react";
-import { View, Text, Image, StyleSheet, TouchableOpacity } from "react-native";
+import { View, Text, StyleSheet, TouchableOpacity } from "react-native";
+import { Image } from "expo-image";
 import { Ionicons } from "@expo/vector-icons";
 import { useTheme } from "./ThemeProvider";
 import type { Palette } from "./theme";
 import { spacing, radius, typography } from "./theme";
 import { countryFlag } from "./countryFlag";
+import { InjuryStatusBadge } from "./InjuryStatusBadge";
 
 type Props = {
   firstName: string;
   lastName: string;
   country?: string | null;
+  subtitle?: string | null;
   photo?: string | null;
   rank?: number | null;
   rankLabel?: string;
+  /** Injury status string ("Out", "Day-To-Day", etc.) — omit/null when the player is available. */
+  injuryStatus?: string | null;
   following?: boolean;
   onToggleFollow?: () => void;
   onPress?: () => void;
@@ -22,9 +27,11 @@ export function PlayerCard({
   firstName,
   lastName,
   country,
+  subtitle,
   photo,
   rank,
   rankLabel = "Rank",
+  injuryStatus,
   following,
   onToggleFollow,
   onPress,
@@ -37,7 +44,7 @@ export function PlayerCard({
     <TouchableOpacity style={styles.container} onPress={onPress} activeOpacity={0.7}>
       <View style={styles.photoWrapper}>
         {photo ? (
-          <Image source={{ uri: photo }} style={styles.photo} />
+          <Image source={{ uri: photo }} style={styles.photo} cachePolicy="memory-disk" />
         ) : (
           <View style={styles.photoPlaceholder}>
             <Text style={styles.initials}>
@@ -51,8 +58,14 @@ export function PlayerCard({
       </View>
       <View style={styles.info}>
         <Text style={styles.name}>{firstName} {lastName}</Text>
+        {subtitle && <Text style={styles.rankLabel}>{subtitle}</Text>}
         {rank != null && (
           <Text style={styles.rankLabel}>{rankLabel} <Text style={styles.rankValue}>#{rank}</Text></Text>
+        )}
+        {injuryStatus && (
+          <View style={styles.injuryBadgeWrapper}>
+            <InjuryStatusBadge status={injuryStatus} />
+          </View>
         )}
       </View>
       {onToggleFollow && (
@@ -134,6 +147,9 @@ function createStyles(colors: Palette) {
       ...typography.caption,
       color: colors.primary,
       fontWeight: "600",
+    },
+    injuryBadgeWrapper: {
+      marginTop: spacing.xs,
     },
     followButton: {
       marginLeft: spacing.sm,

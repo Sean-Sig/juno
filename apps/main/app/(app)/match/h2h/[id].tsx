@@ -5,9 +5,9 @@ import {
   ScrollView,
   ActivityIndicator,
   StyleSheet,
-  Image,
   TouchableOpacity,
 } from "react-native";
+import { Image } from "expo-image";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { useLocalSearchParams, useNavigation, usePathname, useRouter } from "expo-router";
 import { Ionicons } from "@expo/vector-icons";
@@ -74,7 +74,7 @@ function DoublesTeamCol({ p1, p2 }: { p1: { name: string; photo?: string | null;
           p ? (
             <View key={i} style={{ position: "relative", marginHorizontal: 2 }}>
               {p.photo ? (
-                <Image source={{ uri: p.photo }} style={{ width: 48, height: 48, borderRadius: 24 }} />
+                <Image source={{ uri: p.photo }} style={{ width: 48, height: 48, borderRadius: 24 }} cachePolicy="memory-disk" />
               ) : (
                 <View style={{ width: 48, height: 48, borderRadius: 24, backgroundColor: colors.card, alignItems: "center", justifyContent: "center" }}>
                   <Text style={{ fontSize: 14, fontWeight: "600", color: colors.textSecondary }}>
@@ -333,7 +333,7 @@ export default function H2HScreen() {
               <View style={styles.playerCol}>
                 <View style={styles.photoWrapper}>
                   {player1.photo ? (
-                    <Image source={{ uri: player1.photo }} style={styles.playerPhoto} />
+                    <Image source={{ uri: player1.photo }} style={styles.playerPhoto} cachePolicy="memory-disk" />
                   ) : (
                     <View style={[styles.playerPhoto, styles.playerPhotoFallback]}>
                       <Text style={styles.playerPhotoInitials}>{initials(player1.name)}</Text>
@@ -361,7 +361,7 @@ export default function H2HScreen() {
               <View style={styles.playerCol}>
                 <View style={styles.photoWrapper}>
                   {player2.photo ? (
-                    <Image source={{ uri: player2.photo }} style={styles.playerPhoto} />
+                    <Image source={{ uri: player2.photo }} style={styles.playerPhoto} cachePolicy="memory-disk" />
                   ) : (
                     <View style={[styles.playerPhoto, styles.playerPhotoFallback]}>
                       <Text style={styles.playerPhotoInitials}>{initials(player2.name)}</Text>

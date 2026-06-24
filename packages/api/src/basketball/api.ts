@@ -1,5 +1,17 @@
 import { apiFetch, buildQuery, type PageParams } from "../client";
-import type { BasketballGame, BasketballTeam, BasketballPlayer, BasketballScheduleEntry } from "./types";
+import type { BasketballGame, BasketballTeam, BasketballPlayer, BasketballPlayerStats, BasketballScheduleEntry } from "./types";
+
+export type BasketballPlayersSort =
+  | "pts_per_g"
+  | "ast_per_g"
+  | "trb_per_g"
+  | "stl_per_g"
+  | "blk_per_g"
+  | "fg_pct"
+  | "fg3_pct"
+  | "ft_pct"
+  | "mp_per_g"
+  | "games";
 
 export const basketball = {
   /** GET /api/v4/basketball/games — filterable by date, date range, league, or status */
@@ -20,12 +32,25 @@ export const basketball = {
     return apiFetch<{ data: BasketballTeam }>(`/api/v4/basketball/teams/${id}`);
   },
 
-  getPlayers(params?: { league?: string; team_id?: string; q?: string } & PageParams) {
-    return apiFetch<{ data: BasketballPlayer[] }>(`/api/v4/basketball/players${buildQuery(params)}`);
+  getPlayers(
+    params?: {
+      league?: string;
+      team_id?: string;
+      q?: string;
+      sort?: BasketballPlayersSort;
+      order?: "asc" | "desc";
+      season?: number;
+    } & PageParams,
+  ) {
+    return apiFetch<{ data: BasketballPlayer[]; meta: { season: number } }>(
+      `/api/v4/basketball/players${buildQuery(params)}`,
+    );
   },
 
   getPlayer(id: string) {
-    return apiFetch<{ data: BasketballPlayer }>(`/api/v4/basketball/players/${id}`);
+    return apiFetch<{ data: BasketballPlayer & { stats_history: BasketballPlayerStats[] } }>(
+      `/api/v4/basketball/players/${id}`,
+    );
   },
 
   getFollowedPlayers(token: string) {

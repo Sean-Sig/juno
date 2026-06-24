@@ -29,9 +29,40 @@ export type BasketballPlayer = {
   jersey_number: string | null;
   height: string | null;
   weight: string | null;
+  birth_date: string | null;
   league: string | null;
   team_id: string | null;
   enet_id: string | null;
+  stats: BasketballPlayerStats | null;
+  injury: BasketballPlayerInjury | null;
+};
+
+export type BasketballPlayerInjury = {
+  status: string;        // e.g. "Day-To-Day", "Out", "Questionable", "Probable"
+  status_abbr: string;    // e.g. "DD"
+  injury_type: string | null;
+  location: string | null;
+  detail: string | null;
+  side: string | null;
+  return_date: string | null;
+  short_comment: string | null;
+  long_comment: string | null;
+};
+
+export type BasketballPlayerStats = {
+  season: number;
+  team_abbr: string | null; // "2TM"/"3TM" for players traded mid-season; not a resolvable team code
+  games: number | null;
+  mp_per_g: number | null;
+  pts_per_g: number | null;
+  ast_per_g: number | null;
+  trb_per_g: number | null;
+  stl_per_g: number | null;
+  blk_per_g: number | null;
+  fg_pct: number | null;   // decimal 0.0-1.0, multiply by 100 for display
+  fg3_pct: number | null;  // decimal 0.0-1.0, multiply by 100 for display
+  ft_pct: number | null;   // decimal 0.0-1.0, multiply by 100 for display
+  efg_pct: number | null;  // decimal 0.0-1.0, multiply by 100 for display
 };
 
 export type BasketballScheduleEntry = {

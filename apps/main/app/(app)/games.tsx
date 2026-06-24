@@ -11,6 +11,7 @@ import {
   TouchableOpacity,
   RefreshControl,
 } from "react-native";
+import { Image } from "expo-image";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { useRouter } from "expo-router";
 import {
@@ -113,8 +114,8 @@ type SharedGame = {
   period_time: string | null;
   home_score: number | null;
   away_score: number | null;
-  home_team: { name: string; full_name?: string | null; abbreviation: string | null } | null;
-  away_team: { name: string; full_name?: string | null; abbreviation: string | null } | null;
+  home_team: { name: string; full_name?: string | null; abbreviation: string | null; logo?: string | null } | null;
+  away_team: { name: string; full_name?: string | null; abbreviation: string | null; logo?: string | null } | null;
 };
 
 function GameCardShell({
@@ -180,6 +181,7 @@ function GameCardShell({
       <View style={[styles.teamsContainer, isLive && styles.teamsContainerLive]}>
         <TeamScoreRow
           abbrev={game.away_team?.abbreviation ?? null}
+          logo={game.away_team?.logo ?? null}
           flag={awayFlag}
           name={game.away_team?.name ?? "TBD"}
           fullName={game.away_team?.full_name}
@@ -190,6 +192,7 @@ function GameCardShell({
         />
         <TeamScoreRow
           abbrev={game.home_team?.abbreviation ?? null}
+          logo={game.home_team?.logo ?? null}
           flag={homeFlag}
           name={game.home_team?.name ?? "TBD"}
           fullName={game.home_team?.full_name}
@@ -208,6 +211,7 @@ function GameCardShell({
 
 function TeamScoreRow({
   abbrev,
+  logo,
   flag,
   name,
   fullName,
@@ -217,6 +221,7 @@ function TeamScoreRow({
   loser,
 }: {
   abbrev: string | null;
+  logo?: string | null;
   flag?: string | null;
   name: string;
   fullName?: string | null;
@@ -232,6 +237,8 @@ function TeamScoreRow({
     <View style={styles.teamRow}>
       {flag ? (
         <Text style={styles.teamFlag}>{flag}</Text>
+      ) : logo ? (
+        <Image source={{ uri: logo }} style={styles.teamLogo} cachePolicy="memory-disk" contentFit="contain" />
       ) : (
         <Text style={[styles.teamAbbrev, loser && styles.teamMuted]} numberOfLines={1}>
           {abbrev ?? name.slice(0, 3).toUpperCase()}
@@ -585,9 +592,13 @@ function NFLGameCard({ game, onPress }: { game: FootballGame; onPress: () => voi
       <View style={styles.nflMatchup}>
         {/* Away */}
         <View style={styles.nflTeamRow}>
-          <Text style={[styles.nflAbbrev, (isFinal && !awayWins) && styles.nflMuted]} numberOfLines={1}>
-            {awayAbbrev}
-          </Text>
+          {away?.logo ? (
+            <Image source={{ uri: away.logo }} style={styles.nflLogo} cachePolicy="memory-disk" contentFit="contain" />
+          ) : (
+            <Text style={[styles.nflAbbrev, (isFinal && !awayWins) && styles.nflMuted]} numberOfLines={1}>
+              {awayAbbrev}
+            </Text>
+          )}
           <View style={styles.nflTeamInfo}>
             <View style={styles.nflNameRow}>
               <Text style={[styles.nflTeamName, (isFinal && !awayWins) && styles.nflMuted]} numberOfLines={1}>
@@ -621,9 +632,13 @@ function NFLGameCard({ game, onPress }: { game: FootballGame; onPress: () => voi
 
         {/* Home */}
         <View style={styles.nflTeamRow}>
-          <Text style={[styles.nflAbbrev, (isFinal && !homeWins) && styles.nflMuted]} numberOfLines={1}>
-            {homeAbbrev}
-          </Text>
+          {home?.logo ? (
+            <Image source={{ uri: home.logo }} style={styles.nflLogo} cachePolicy="memory-disk" contentFit="contain" />
+          ) : (
+            <Text style={[styles.nflAbbrev, (isFinal && !homeWins) && styles.nflMuted]} numberOfLines={1}>
+              {homeAbbrev}
+            </Text>
+          )}
           <View style={styles.nflTeamInfo}>
             <View style={styles.nflNameRow}>
               <Text style={[styles.nflTeamName, (isFinal && !homeWins) && styles.nflMuted]} numberOfLines={1}>
@@ -1430,6 +1445,10 @@ function createStyles(colors: Palette) {
       fontSize: 22,
       width: 36,
     },
+    teamLogo: {
+      width: 28,
+      height: 28,
+    },
     teamNameCol: {
       flex: 1,
       gap: 1,
@@ -1600,6 +1619,10 @@ function createStyles(colors: Palette) {
       color: colors.text,
       width: 36,
       letterSpacing: 0.3,
+    },
+    nflLogo: {
+      width: 28,
+      height: 28,
     },
     nflTeamInfo: {
       flex: 1,

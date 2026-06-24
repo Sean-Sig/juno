@@ -26,7 +26,9 @@
           "resizeMode": "contain",
           "backgroundColor": "#006747"
         }
-      ]
+      ],
+      "expo-localization",
+      "expo-image"
     ]
   }
 }

@@ -2,17 +2,18 @@ import React, { useEffect, useMemo, useState } from "react";
 import {
   View,
   Text,
-  Image,
   ActivityIndicator,
   StyleSheet,
   ScrollView,
   TouchableOpacity,
 } from "react-native";
+import { Image } from "expo-image";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { useLocalSearchParams, useNavigation, useRouter } from "expo-router";
+import * as Localization from "expo-localization";
 import { Ionicons } from "@expo/vector-icons";
-import { golf, tennis, basketball, hockey, football, soccer, GolfPlayer, GolfPlayerScore, TennisPlayer, TennisMatch, BasketballPlayer, HockeyPlayer, FootballPlayer, SoccerPlayer, useAuth, useSport, type Sport } from "@juno/api";
-import { useTheme, spacing, typography, radius, type Palette } from "@juno/ui";
+import { golf, tennis, basketball, hockey, football, soccer, GolfPlayer, GolfPlayerScore, TennisPlayer, TennisMatch, BasketballPlayer, BasketballPlayerStats, HockeyPlayer, FootballPlayer, SoccerPlayer, useAuth, useSport, type Sport } from "@juno/api";
+import { useTheme, spacing, typography, radius, InjuryStatusBadge, type Palette } from "@juno/ui";
 import { useFollowedPlayers } from "../../../context/FollowedPlayersContext";
 import { useScoutLineup } from "../../../context/ScoutLineupContext";
 
@@ -29,6 +30,67 @@ const ROUND_LABELS: Record<string, string> = {
 
 function getDisplayName(player: Player) {
   return `${(player as GolfPlayer).display_first_name ?? player.first_name} ${(player as GolfPlayer).display_last_name ?? player.last_name}`;
+}
+
+function calculateAge(dob: string): number | null {
+  const birth = new Date(dob);
+  if (isNaN(birth.getTime())) return null;
+  const now = new Date();
+  let age = now.getFullYear() - birth.getFullYear();
+  const hasNotHadBirthdayThisYear =
+    now.getMonth() < birth.getMonth() ||
+    (now.getMonth() === birth.getMonth() && now.getDate() < birth.getDate());
+  if (hasNotHadBirthdayThisYear) age--;
+  return age;
+}
+
+function formatDob(dob: string): string {
+  const date = new Date(dob);
+  if (isNaN(date.getTime())) return dob;
+  return date.toLocaleDateString(undefined, { year: "numeric", month: "short", day: "numeric" });
+}
+
+/** "us" (feet/inches, lbs) for the US locale region; "metric"/"uk" everywhere else uses cm/kg. */
+const usesImperial = Localization.getLocales()[0]?.measurementSystem === "us";
+
+/** Backend sends height in cm. */
+function formatHeight(heightCm: string): string {
+  const cm = parseFloat(heightCm);
+  if (isNaN(cm)) return heightCm;
+  if (!usesImperial) return `${Math.round(cm)} cm`;
+  const totalInches = Math.round(cm / 2.54);
+  const feet = Math.floor(totalInches / 12);
+  const inches = totalInches % 12;
+  return `${feet}'${inches}"`;
+}
+
+/** Backend sends weight in kg. */
+function formatWeight(weightKg: string): string {
+  const kg = parseFloat(weightKg);
+  if (isNaN(kg)) return weightKg;
+  if (!usesImperial) return `${Math.round(kg)} kg`;
+  return `${Math.round(kg * 2.20462)} lbs`;
+}
+
+/** Per-game averages are null-safe — a player can have no stats on file yet. */
+function formatAvg(value: number | null): string {
+  return value != null ? value.toFixed(1) : "—";
+}
+
+/** Backend sends shooting splits as 0.0-1.0 decimals. */
+function formatPct(value: number | null): string {
+  return value != null ? `${(value * 100).toFixed(1)}%` : "—";
+}
+
+function getBioStats(player: Player, sport: Sport) {
+  if (sport === "golf" || sport === "tennis") return [];
+  const p = player as BasketballPlayer | FootballPlayer | SoccerPlayer | HockeyPlayer;
+  const age = p.birth_date ? calculateAge(p.birth_date) : null;
+  return [
+    age != null && { label: "Age", value: `${age}` },
+    p.height != null && { label: "Height", value: formatHeight(p.height) },
+    p.weight != null && { label: "Weight", value: formatWeight(p.weight) },
+  ].filter(Boolean) as { label: string; value: string }[];
 }
 
 function getRankStats(player: Player, sport: Sport) {
@@ -132,6 +194,7 @@ export default function PlayerScreen() {
 
   // Fetch golf scorecard
   useEffect(() => {
+    setGolfScores([]);
     if (activeSport !== "golf" || !id) return;
     golf.getPlayerScores(id)
       .then(({ data }) => setGolfScores(data))
@@ -140,6 +203,8 @@ export default function PlayerScreen() {
 
   // Fetch this player's matches for the current tournament
   useEffect(() => {
+    setTournamentMatches([]);
+    setPlayerMap(new Map());
     if (activeSport !== "tennis" || !id || !teamId) return;
     tennis.getPlayerMatches(id, teamId)
       .then(({ data }) => {
@@ -191,14 +256,14 @@ export default function PlayerScreen() {
   }
 
   const displayName = getDisplayName(player);
-  const stats = getRankStats(player, activeSport as Sport);
+  const stats = [...getRankStats(player, activeSport as Sport), ...getBioStats(player, activeSport as Sport)];
 
   return (
     <SafeAreaView style={styles.container} edges={["bottom"]}>
       <ScrollView contentContainerStyle={styles.scroll}>
         <View style={styles.profile}>
           {player.photo ? (
-            <Image source={{ uri: player.photo }} style={styles.photo} />
+            <Image source={{ uri: player.photo }} style={styles.photo} cachePolicy="memory-disk" />
           ) : (
             <View style={styles.photoPlaceholder}>
               <Text style={styles.initials}>
@@ -208,6 +273,11 @@ export default function PlayerScreen() {
           )}
           <Text style={styles.name}>{displayName}</Text>
           {player.country && <Text style={styles.country}>{player.country}</Text>}
+          {activeSport === "basketball" && (player as BasketballPlayer).injury && (
+            <View style={styles.injuryBadgeRow}>
+              <InjuryStatusBadge status={(player as BasketballPlayer).injury!.status} />
+            </View>
+          )}
 
           {session ? (
             <TouchableOpacity
@@ -267,6 +337,17 @@ export default function PlayerScreen() {
             playerId={id!}
             matches={tournamentMatches}
             playerMap={playerMap}
+          />
+        )}
+
+        {activeSport === "basketball" && (player as BasketballPlayer).injury && (
+          <InjuryReportCard injury={(player as BasketballPlayer).injury!} />
+        )}
+
+        {activeSport === "basketball" && (
+          <BasketballSeasonStats
+            stats={(player as BasketballPlayer).stats}
+            history={(player as BasketballPlayer & { stats_history?: BasketballPlayerStats[] }).stats_history ?? []}
           />
         )}
       </ScrollView>
@@ -483,6 +564,153 @@ function TennisScorecard({
 }
 
 // ---------------------------------------------------------------------------
+// Basketball Injury Report
+// ---------------------------------------------------------------------------
+
+function InjuryReportCard({ injury }: { injury: NonNullable<BasketballPlayer["injury"]> }) {
+  const { colors } = useTheme();
+  const styles = useMemo(() => createStyles(colors), [colors]);
+
+  const detailParts = [injury.injury_type, injury.side, injury.detail].filter(Boolean);
+
+  return (
+    <View style={styles.scorecard}>
+      <View style={styles.bbHeaderRow}>
+        <Text style={styles.scorecardTitle}>Injury Report</Text>
+        <InjuryStatusBadge status={injury.status} />
+      </View>
+      {detailParts.length > 0 && (
+        <Text style={styles.injuryDetailText}>{detailParts.join(" · ")}</Text>
+      )}
+      {injury.return_date && (
+        <Text style={styles.injuryReturnText}>Est. return: {injury.return_date}</Text>
+      )}
+      {injury.short_comment && (
+        <Text style={styles.injuryCommentText}>{injury.short_comment}</Text>
+      )}
+    </View>
+  );
+}
+
+// ---------------------------------------------------------------------------
+// Basketball Season Stats
+// ---------------------------------------------------------------------------
+
+function BasketballSeasonStats({
+  stats,
+  history,
+}: {
+  stats: BasketballPlayerStats | null;
+  history: BasketballPlayerStats[];
+}) {
+  const { colors } = useTheme();
+  const styles = useMemo(() => createStyles(colors), [colors]);
+
+  return (
+    <View style={styles.scorecard}>
+      <View style={styles.bbHeaderRow}>
+        <Text style={styles.scorecardTitle}>Season Stats</Text>
+        {stats && (
+          <Text style={styles.bbSeasonMeta}>
+            {stats.season}{stats.team_abbr ? ` · ${stats.team_abbr}` : ""}
+          </Text>
+        )}
+      </View>
+
+      {!stats ? (
+        <Text style={styles.bbEmpty}>No stats on file for the current season yet.</Text>
+      ) : (
+        <>
+          {/* Headline per-game averages */}
+          <View style={styles.scStatsRow}>
+            <View style={styles.scStat}>
+              <Text style={styles.statValue}>{formatAvg(stats.pts_per_g)}</Text>
+              <Text style={styles.scStatLabel}>PTS</Text>
+            </View>
+            <View style={styles.scStatDivider} />
+            <View style={styles.scStat}>
+              <Text style={styles.statValue}>{formatAvg(stats.trb_per_g)}</Text>
+              <Text style={styles.scStatLabel}>REB</Text>
+            </View>
+            <View style={styles.scStatDivider} />
+            <View style={styles.scStat}>
+              <Text style={styles.statValue}>{formatAvg(stats.ast_per_g)}</Text>
+              <Text style={styles.scStatLabel}>AST</Text>
+            </View>
+          </View>
+
+          {/* Secondary counting stats */}
+          <View style={[styles.scStatsRow, styles.bbSecondaryRow]}>
+            <View style={styles.scStat}>
+              <Text style={styles.bbSecondaryValue}>{formatAvg(stats.mp_per_g)}</Text>
+              <Text style={styles.scStatLabel}>MIN</Text>
+            </View>
+            <View style={styles.scStatDivider} />
+            <View style={styles.scStat}>
+              <Text style={styles.bbSecondaryValue}>{formatAvg(stats.stl_per_g)}</Text>
+              <Text style={styles.scStatLabel}>STL</Text>
+            </View>
+            <View style={styles.scStatDivider} />
+            <View style={styles.scStat}>
+              <Text style={styles.bbSecondaryValue}>{formatAvg(stats.blk_per_g)}</Text>
+              <Text style={styles.scStatLabel}>BLK</Text>
+            </View>
+            <View style={styles.scStatDivider} />
+            <View style={styles.scStat}>
+              <Text style={styles.bbSecondaryValue}>{stats.games ?? "—"}</Text>
+              <Text style={styles.scStatLabel}>GP</Text>
+            </View>
+          </View>
+
+          {/* Shooting splits */}
+          <View style={[styles.scStatsRow, styles.bbSecondaryRow]}>
+            <View style={styles.scStat}>
+              <Text style={styles.bbSecondaryValue}>{formatPct(stats.fg_pct)}</Text>
+              <Text style={styles.scStatLabel}>FG%</Text>
+            </View>
+            <View style={styles.scStatDivider} />
+            <View style={styles.scStat}>
+              <Text style={styles.bbSecondaryValue}>{formatPct(stats.fg3_pct)}</Text>
+              <Text style={styles.scStatLabel}>3P%</Text>
+            </View>
+            <View style={styles.scStatDivider} />
+            <View style={styles.scStat}>
+              <Text style={styles.bbSecondaryValue}>{formatPct(stats.ft_pct)}</Text>
+              <Text style={styles.scStatLabel}>FT%</Text>
+            </View>
+          </View>
+        </>
+      )}
+
+      {history.length > 0 && (
+        <View style={styles.bbHistory}>
+          <View style={styles.bbHistoryRow}>
+            <Text style={[styles.bbHistoryCell, styles.bbHistorySeasonCell, styles.bbHistoryHeaderText]}>SEASON</Text>
+            <Text style={[styles.bbHistoryCell, styles.bbHistoryHeaderText]}>TEAM</Text>
+            <Text style={[styles.bbHistoryCell, styles.bbHistoryHeaderText]}>GP</Text>
+            <Text style={[styles.bbHistoryCell, styles.bbHistoryHeaderText]}>PTS</Text>
+            <Text style={[styles.bbHistoryCell, styles.bbHistoryHeaderText]}>REB</Text>
+            <Text style={[styles.bbHistoryCell, styles.bbHistoryHeaderText]}>AST</Text>
+            <Text style={[styles.bbHistoryCell, styles.bbHistoryHeaderText]}>FG%</Text>
+          </View>
+          {history.map((season, i) => (
+            <View key={`${season.season}-${i}`} style={[styles.bbHistoryRow, i % 2 === 1 && styles.bbHistoryRowAlt]}>
+              <Text style={[styles.bbHistoryCell, styles.bbHistorySeasonCell]}>{season.season}</Text>
+              <Text style={styles.bbHistoryCell}>{season.team_abbr ?? "—"}</Text>
+              <Text style={styles.bbHistoryCell}>{season.games ?? "—"}</Text>
+              <Text style={styles.bbHistoryCell}>{formatAvg(season.pts_per_g)}</Text>
+              <Text style={styles.bbHistoryCell}>{formatAvg(season.trb_per_g)}</Text>
+              <Text style={styles.bbHistoryCell}>{formatAvg(season.ast_per_g)}</Text>
+              <Text style={styles.bbHistoryCell}>{formatPct(season.fg_pct)}</Text>
+            </View>
+          ))}
+        </View>
+      )}
+    </View>
+  );
+}
+
+// ---------------------------------------------------------------------------
 // Styles
 // ---------------------------------------------------------------------------
 
@@ -505,6 +733,7 @@ function createStyles(colors: Palette) {
     initials: { ...typography.h2, color: colors.textSecondary },
     name: { ...typography.h2, color: colors.text, textAlign: "center" },
     country: { ...typography.body, color: colors.textSecondary, marginTop: spacing.xs },
+    injuryBadgeRow: { marginTop: spacing.sm },
     followButton: {
       backgroundColor: colors.primary,
       borderRadius: radius.full,
@@ -709,6 +938,47 @@ function createStyles(colors: Palette) {
       borderRadius: 4,
       backgroundColor: colors.live ?? colors.primary,
       marginRight: 2,
+    },
+    // Basketball season stats
+    bbHeaderRow: {
+      flexDirection: "row",
+      alignItems: "center",
+      justifyContent: "space-between",
+      marginBottom: spacing.md,
+    },
+    bbSeasonMeta: { ...typography.caption, color: colors.textSecondary, fontWeight: "600" },
+    bbEmpty: { ...typography.body, color: colors.textSecondary },
+    injuryDetailText: { ...typography.label, color: colors.text, fontWeight: "600", marginBottom: spacing.xs },
+    injuryReturnText: { ...typography.caption, color: colors.textSecondary, marginBottom: spacing.xs },
+    injuryCommentText: { ...typography.body, color: colors.textSecondary },
+    bbSecondaryRow: { marginTop: spacing.md },
+    bbSecondaryValue: { ...typography.h3, color: colors.text, fontWeight: "700" },
+    bbHistory: {
+      marginTop: spacing.lg,
+      paddingTop: spacing.md,
+      borderTopWidth: StyleSheet.hairlineWidth,
+      borderTopColor: colors.border,
+    },
+    bbHistoryRow: {
+      flexDirection: "row",
+      paddingVertical: spacing.xs,
+    },
+    bbHistoryRowAlt: {
+      backgroundColor: colors.background,
+    },
+    bbHistoryCell: {
+      ...typography.caption,
+      color: colors.text,
+      flex: 1,
+      textAlign: "center",
+    },
+    bbHistorySeasonCell: {
+      flex: 1.3,
+      textAlign: "left",
+    },
+    bbHistoryHeaderText: {
+      color: colors.textSecondary,
+      fontWeight: "700",
     },
   });
 }

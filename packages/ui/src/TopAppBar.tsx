@@ -1,5 +1,6 @@
 import React, { useMemo } from "react";
-import { View, Text, Image, StyleSheet, TouchableOpacity } from "react-native";
+import { View, Text, StyleSheet, TouchableOpacity } from "react-native";
+import { Image } from "expo-image";
 import { useTheme } from "./ThemeProvider";
 import type { Palette } from "./theme";
 import { spacing, radius, typography } from "./theme";
@@ -27,7 +28,7 @@ export function TopAppBar({ title, avatarUri, avatarInitials = "?", onAvatarPres
           activeOpacity={0.7}
         >
           {avatarUri ? (
-            <Image source={{ uri: avatarUri }} style={styles.avatarImage} />
+            <Image source={{ uri: avatarUri }} style={styles.avatarImage} cachePolicy="memory-disk" />
           ) : (
             <Text style={styles.avatarInitials}>{avatarInitials}</Text>
           )}
@@ -42,7 +43,7 @@ export function TopAppBar({ title, avatarUri, avatarInitials = "?", onAvatarPres
           activeOpacity={0.7}
         >
           {avatarUri ? (
-            <Image source={{ uri: avatarUri }} style={styles.avatarImage} />
+            <Image source={{ uri: avatarUri }} style={styles.avatarImage} cachePolicy="memory-disk" />
           ) : (
             <Text style={styles.avatarInitials}>{avatarInitials}</Text>
           )}

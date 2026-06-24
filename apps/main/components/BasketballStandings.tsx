@@ -10,6 +10,8 @@ import {
   TextInput,
   TouchableOpacity,
   ScrollView,
+  KeyboardAvoidingView,
+  Platform,
 } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { useRouter } from "expo-router";
@@ -35,6 +37,20 @@ const POSITIONS: { key: PositionFilter; label: string }[] = [
 ];
 
 const PER_PAGE = 50;
+
+/** Normalize full position names to abbreviations for filtering. */
+function normalizePosition(pos: string | null | undefined): string {
+  if (!pos) return "";
+  const upper = pos.trim().toUpperCase();
+  // Map full names to abbreviations
+  if (upper.includes("POINT")) return "PG";
+  if (upper.includes("SHOOTING")) return "SG";
+  if (upper.includes("SMALL FORWARD")) return "SF";
+  if (upper.includes("POWER")) return "PF";
+  if (upper.includes("CENTER")) return "C";
+  // Return as-is if already abbreviated
+  return upper;
+}
 
 // ---------------------------------------------------------------------------
 // Teams view helpers
@@ -257,7 +273,7 @@ function PlayersView({ colors }: { colors: Palette }) {
   const displayed = useMemo(() => {
     if (position === "all") return players;
     return players.filter((p) => {
-      const pos = (p.position ?? "").toUpperCase();
+      const pos = normalizePosition(p.position);
       return pos === position || pos.startsWith(position + "-") || pos.endsWith("-" + position);
     });
   }, [players, position]);
@@ -304,33 +320,44 @@ function PlayersView({ colors }: { colors: Palette }) {
           <SkeletonCard />
         </View>
       ) : (
-        <FlatList
-          data={displayed}
-          keyExtractor={(p) => p.id}
-          contentContainerStyle={styles.playerList}
-          refreshControl={
-            <RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor={colors.primary} />
-          }
-          onEndReached={query.trim() ? undefined : loadMore}
-          onEndReachedThreshold={0.4}
-          ListFooterComponent={
-            loadingMore ? <ActivityIndicator color={colors.primary} style={styles.footerSpinner} /> : null
-          }
-          renderItem={({ item }) => (
-            <PlayerCard
-              firstName={item.display_first_name ?? item.first_name}
-              lastName={item.display_last_name ?? item.last_name}
-              country={[item.position, item.country].filter(Boolean).join(" · ") || null}
-              photo={item.photo}
-              rank={item.jersey_number != null ? parseInt(item.jersey_number, 10) || null : null}
-              rankLabel="No."
-              following={isFollowed(item.id)}
-              onToggleFollow={() => toggleFollow(item.id)}
-              onPress={() => router.push(`/(app)/player/${item.id}`)}
-            />
-          )}
-          ListEmptyComponent={<Text style={styles.empty}>No players found.</Text>}
-        />
+        <KeyboardAvoidingView
+          behavior={Platform.OS === "ios" ? "padding" : "height"}
+          style={{ flex: 1 }}
+        >
+          <FlatList
+            data={displayed}
+            keyExtractor={(p) => p.id}
+            contentContainerStyle={[
+              styles.playerList,
+              displayed.length === 0 && styles.playerListEmpty,
+            ]}
+            scrollEnabled={displayed.length > 0}
+            refreshControl={
+              <RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor={colors.primary} />
+            }
+            onEndReached={query.trim() ? undefined : loadMore}
+            onEndReachedThreshold={0.4}
+            ListFooterComponent={
+              loadingMore ? <ActivityIndicator color={colors.primary} style={styles.footerSpinner} /> : null
+            }
+            renderItem={({ item }) => (
+              <PlayerCard
+                firstName={item.display_first_name ?? item.first_name}
+                lastName={item.display_last_name ?? item.last_name}
+                country={item.country}
+                subtitle={item.position}
+                photo={item.photo}
+                rank={item.jersey_number != null ? parseInt(item.jersey_number, 10) || null : null}
+                rankLabel="No."
+                injuryStatus={item.injury?.status}
+                following={isFollowed(item.id)}
+                onToggleFollow={() => toggleFollow(item.id)}
+                onPress={() => router.push(`/(app)/player/${item.id}`)}
+              />
+            )}
+            ListEmptyComponent={<Text style={styles.empty}>No players found.</Text>}
+          />
+        </KeyboardAvoidingView>
       )}
     </View>
   );
@@ -472,7 +499,8 @@ function createStyles(colors: Palette) {
     typeChipText: { ...typography.label, color: colors.textSecondary },
     typeChipTextActive: { color: colors.textOnPrimary, fontWeight: "700" },
     playerList: { padding: spacing.md, paddingTop: 0 },
+    playerListEmpty: { flexGrow: 1, justifyContent: "center", alignItems: "center" },
     footerSpinner: { marginVertical: spacing.md },
-    empty: { ...typography.body, color: colors.textSecondary, textAlign: "center", marginTop: spacing.lg },
+    empty: { ...typography.body, color: colors.textSecondary, textAlign: "center" },
   });
 }

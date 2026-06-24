@@ -31,6 +31,7 @@ export type FootballPlayer = {
   jersey_number: string | null;
   height: string | null;
   weight: string | null;
+  birth_date: string | null;
   league: string | null;
   team_id: string | null;
   enet_id: string | null;

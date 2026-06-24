@@ -12,7 +12,8 @@
     "react-native": "*"
   },
   "dependencies": {
-    "@expo/vector-icons": "*"
+    "@expo/vector-icons": "*",
+    "expo-image": "*"
   },
   "devDependencies": {
     "@juno/config": "*",

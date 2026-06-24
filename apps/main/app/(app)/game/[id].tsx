@@ -7,6 +7,7 @@ import {
   StyleSheet,
   ScrollView,
 } from "react-native";
+import { Image } from "expo-image";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { useLocalSearchParams, useNavigation, useRouter } from "expo-router";
 import { Ionicons } from "@expo/vector-icons";
@@ -334,18 +335,30 @@ export default function GameScreen() {
                 <Text style={[styles.qCell, styles.qHead]}>T</Text>
               </View>
               <View style={styles.qRow}>
-                <Text style={[styles.qCell, styles.qTeamCell, styles.qTeamName]} numberOfLines={1}>
-                  {awayFlag ?? away?.abbreviation ?? "AWY"}
-                </Text>
+                <View style={[styles.qCell, styles.qTeamCell, styles.qTeamCellRow]}>
+                  {!awayFlag && away?.logo ? (
+                    <Image source={{ uri: away.logo }} style={styles.qTeamLogo} cachePolicy="memory-disk" contentFit="contain" />
+                  ) : (
+                    <Text style={styles.qTeamName} numberOfLines={1}>
+                      {awayFlag ?? away?.abbreviation ?? "AWY"}
+                    </Text>
+                  )}
+                </View>
                 {periods.map((p, i) => (
                   <Text key={i} style={styles.qCell}>{p.away ?? "-"}</Text>
                 ))}
                 <Text style={[styles.qCell, styles.qTotal]}>{game.away_score ?? "-"}</Text>
               </View>
               <View style={styles.qRow}>
-                <Text style={[styles.qCell, styles.qTeamCell, styles.qTeamName]} numberOfLines={1}>
-                  {homeFlag ?? home?.abbreviation ?? "HME"}
-                </Text>
+                <View style={[styles.qCell, styles.qTeamCell, styles.qTeamCellRow]}>
+                  {!homeFlag && home?.logo ? (
+                    <Image source={{ uri: home.logo }} style={styles.qTeamLogo} cachePolicy="memory-disk" contentFit="contain" />
+                  ) : (
+                    <Text style={styles.qTeamName} numberOfLines={1}>
+                      {homeFlag ?? home?.abbreviation ?? "HME"}
+                    </Text>
+                  )}
+                </View>
                 {periods.map((p, i) => (
                   <Text key={i} style={styles.qCell}>{p.home ?? "-"}</Text>
                 ))}
@@ -602,6 +615,8 @@ function createStyles(colors: Palette) {
     },
     qCell: { ...typography.label, color: colors.text, flex: 1, textAlign: "center" },
     qTeamCell: { flex: 1.5, textAlign: "left" },
+    qTeamCellRow: { flexDirection: "row", alignItems: "center" },
+    qTeamLogo: { width: 20, height: 20 },
     qHead: { color: colors.textSecondary, fontWeight: "700" },
     qTeamName: { fontWeight: "600" },
     qTotal: { fontWeight: "800", color: colors.primary },

@@ -2,12 +2,12 @@ import React, { useEffect, useMemo, useState } from "react";
 import {
   View,
   Text,
-  Image,
   ActivityIndicator,
   StyleSheet,
   ScrollView,
   TouchableOpacity,
 } from "react-native";
+import { Image } from "expo-image";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { useLocalSearchParams, useNavigation, useRouter } from "expo-router";
 import { Ionicons } from "@expo/vector-icons";
@@ -133,7 +133,7 @@ export default function PlayerScreen() {
       <ScrollView contentContainerStyle={styles.scroll}>
         <View style={styles.profile}>
           {player.photo ? (
-            <Image source={{ uri: player.photo }} style={styles.photo} />
+            <Image source={{ uri: player.photo }} style={styles.photo} cachePolicy="memory-disk" />
           ) : (
             <View style={styles.photoPlaceholder}>
               <Text style={styles.initials}>

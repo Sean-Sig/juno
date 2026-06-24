@@ -2,13 +2,13 @@ import React, { useCallback, useEffect, useMemo, useState } from "react";
 import {
   View,
   Text,
-  Image,
   ActivityIndicator,
   StyleSheet,
   ScrollView,
   TouchableOpacity,
   RefreshControl,
 } from "react-native";
+import { Image } from "expo-image";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { useLocalSearchParams, useRouter } from "expo-router";
 import {
@@ -126,7 +126,7 @@ function GolfTournamentDetail({ id }: { id: string }) {
         }
       >
         {entry.image_url && (
-          <Image source={{ uri: entry.image_url }} style={styles.image} />
+          <Image source={{ uri: entry.image_url }} style={styles.image} cachePolicy="memory-disk" />
         )}
         <View style={styles.infoBlock}>
           <Text style={styles.name}>{entry.name}</Text>
@@ -232,7 +232,7 @@ function TennisTournamentDetail({ id }: { id: string }) {
       <BackHeader />
       <ScrollView>
         {entry.image_url && (
-          <Image source={{ uri: entry.image_url }} style={styles.image} />
+          <Image source={{ uri: entry.image_url }} style={styles.image} cachePolicy="memory-disk" />
         )}
         <View style={styles.infoBlock}>
           <Text style={styles.name}>{entry.name}</Text>

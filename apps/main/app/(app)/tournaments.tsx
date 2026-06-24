@@ -11,11 +11,11 @@ import {
   TouchableOpacity,
   Modal,
   Animated,
-  Image,
   Dimensions,
   Platform,
   PanResponder,
 } from "react-native";
+import { Image } from "expo-image";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { useRouter } from "expo-router";
 import {
@@ -86,17 +86,12 @@ export default function TournamentsScreen() {
   const [selected, setSelected] = useState<GolfTournament | null>(null);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
-  const [expandedId, setExpandedId] = useState<string | null>(null);
   const [sheetScore, setSheetScore] = useState<GolfScore | null>(null);
   const channelRef = useRef<ReturnType<typeof joinGolfChannel> | null>(null);
 
-  const load = useCallback(() => {
-    return Promise.all([
-      golf.getTournaments(TEAM_ID),
-      golf.getScheduleEntries(),
-    ]).then(([{ data: tourData }, { data: schedData }]) => {
+  const loadTournaments = useCallback(() => {
+    return golf.getTournaments(TEAM_ID).then(({ data: tourData }) => {
       setTournaments(tourData);
-      setScheduleEntries(schedData);
       const active =
         tourData.find((t) => t.events?.some((e) => e.live)) ??
         tourData.find((t) => t.events?.length > 0) ??
@@ -105,6 +100,15 @@ export default function TournamentsScreen() {
       setSelected((prev) => prev ?? active);
     }).catch(() => {});
   }, []);
+
+  // Schedule entries are seeded once via REST for the very first render, then
+  // kept in sync by the `schedule_state` channel push (sent on join and again
+  // whenever the backend re-imports the schedule) — no polling needed.
+  const load = useCallback(() => {
+    return Promise.all([loadTournaments(), golf.getScheduleEntries().then(({ data }) => {
+      setScheduleEntries(data);
+    })]).catch(() => {});
+  }, [loadTournaments]);
 
   function onRefresh() {
     setRefreshing(true);
@@ -116,9 +120,13 @@ export default function TournamentsScreen() {
 
     const channel = joinGolfChannel(TEAM_ID, {
       onState: (t) => {
-        setTournaments((prev) => prev.map((existing) =>
-          existing.id === t.id ? withPlayers(t, existing) : existing
-        ));
+        setTournaments((prev) => {
+          const existing = prev.find((p) => p.id === t.id);
+          const merged = withPlayers(t, existing ?? null);
+          return existing
+            ? prev.map((p) => (p.id === t.id ? merged : p))
+            : [...prev, merged];
+        });
         setSelected((prev) => prev?.id === t.id ? withPlayers(t, prev) : prev);
       },
       onDelta: (diff) => {
@@ -164,17 +172,28 @@ export default function TournamentsScreen() {
           return next;
         });
       },
+      onScheduleState: (entries) => {
+        setScheduleEntries(entries);
+      },
     });
     channelRef.current = channel;
-    return () => { channel.leave(); };
-  }, []);
+
+    // `tournament_state` is only pushed once, right after join — it never repeats,
+    // so a tournament going live later in a long-lived session would otherwise
+    // never appear (and one going final would never disappear) until the screen
+    // remounts. Poll the REST list periodically as a fallback so `tournaments`
+    // stays current regardless of channel/join timing.
+    //
+    // `scheduleEntries` doesn't need this fallback poll — the backend broadcasts
+    // a fresh `schedule_state` over this same channel whenever the schedule is
+    // re-imported, so `onScheduleState` keeps it current without polling.
+    const pollId = setInterval(loadTournaments, 30_000);
+
+    return () => { channel.leave(); clearInterval(pollId); };
+  }, [load, loadTournaments]);
 
   // Derived data
   const today = new Date().toISOString().slice(0, 10);
-  // Trust the `live` flag on events — it's the authoritative signal from the backend.
-  // Don't filter by end_date: scoring can run past the scheduled end date.
-  const liveTournaments = tournaments.filter((t) => t.events?.some((e) => e.live));
-  const hasLive = liveTournaments.length > 0;
 
   const upcomingEntries = useMemo(() =>
     scheduleEntries
@@ -189,6 +208,21 @@ export default function TournamentsScreen() {
       .sort((a, b) => (b.end_date ?? "").localeCompare(a.end_date ?? "")),
     [scheduleEntries, today]
   );
+
+  // The schedule entry's end_date is the authoritative "has this tournament actually
+  // concluded" signal — cross-reference via enet_stage_id so a tournament whose
+  // `events[].live` flag is stale (slow to flip server-side after the event ends)
+  // doesn't keep showing in Live once its schedule entry has already moved to Final.
+  const endedEnetStageIds = useMemo(() =>
+    new Set(finalEntries.map((e) => e.enet_stage_id).filter((id): id is string => id != null)),
+    [finalEntries]
+  );
+
+  const liveTournaments = tournaments.filter((t) =>
+    t.events?.some((e) => e.live) &&
+    !(t.enet_tournament_stage_id != null && endedEnetStageIds.has(t.enet_tournament_stage_id))
+  );
+  const hasLive = liveTournaments.length > 0;
 
   // Leaderboard for selected live tournament
   const scores = useMemo(() => {
@@ -241,9 +275,8 @@ export default function TournamentsScreen() {
     if (!loading) setStatusTab(hasLive ? "live" : "upcoming");
   }, [loading]);
 
-  // Reset search and expansion when switching tabs or tournaments
-  useEffect(() => { setQuery(""); setExpandedId(null); }, [statusTab]);
-  useEffect(() => { setExpandedId(null); }, [selected?.id]);
+  // Reset search when switching tabs
+  useEffect(() => { setQuery(""); }, [statusTab]);
 
   if (loading) {
     return (
@@ -358,7 +391,6 @@ export default function TournamentsScreen() {
               <FlatList
                 data={filteredScores}
                 keyExtractor={(s) => s.id}
-                extraData={expandedId}
                 refreshControl={
                   <RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor={colors.primary} />
                 }
@@ -376,8 +408,6 @@ export default function TournamentsScreen() {
                     mostRecentRound={mostRecentRound}
                     showToday={showToday}
                     coursePar={coursePar}
-                    isExpanded={expandedId === item.id}
-                    onToggle={() => setExpandedId(expandedId === item.id ? null : item.id)}
                     onPlayerPress={() => setSheetScore(item)}
                     onScorecard={() => {
                       const firstName = item.player?.display_first_name ?? item.player?.first_name ?? "";
@@ -539,8 +569,6 @@ function LeaderboardRow({
   mostRecentRound,
   showToday,
   coursePar,
-  isExpanded,
-  onToggle,
   onPlayerPress,
   onScorecard,
 }: {
@@ -548,8 +576,6 @@ function LeaderboardRow({
   mostRecentRound: string | null;
   showToday: boolean;
   coursePar: number | null;
-  isExpanded: boolean;
-  onToggle: () => void;
   onPlayerPress: () => void;
   onScorecard: () => void;
 }) {
@@ -569,276 +595,51 @@ function LeaderboardRow({
   const todayPar: number | null = todayStarted ? roundParFromDetail(todayDetail!, coursePar) : null;
   const todayThru: string | null = todayStarted ? (todayDetail?.thru ?? null) : null;
 
-  // Per-round breakdown for expanded panel
-  const roundBreakdown = ROUND_ORDER
-    .map((key) => {
-      const d = score.details?.[key] as GolfRoundDetail | undefined;
-      if (!detailHasData(d)) return null;
-      return { key, label: key.replace("round_", "R"), par: roundParFromDetail(d!, coursePar), thru: d!.thru };
-    })
-    .filter((r): r is { key: string; label: string; par: number | null; thru: string | null } => r !== null);
-
-  // Which round's scorecard to show — defaults to today's, user can tap to switch
-  const [selectedRoundKey, setSelectedRoundKey] = useState<string | null>(null);
-  const displayRoundKey = selectedRoundKey ?? resolvedRound;
-  const displayDetail = (displayRoundKey && score.details?.[displayRoundKey]) as GolfRoundDetail | null ?? null;
-
-  // Reset selected round when row collapses
-  useEffect(() => {
-    if (!isExpanded) setSelectedRoundKey(null);
-  }, [isExpanded]);
-
   return (
-    <View>
-      <TouchableOpacity style={styles.row} onPress={onToggle} activeOpacity={0.7}>
-        <Text style={styles.place}>{score.display_place ?? "—"}</Text>
-        <TouchableOpacity style={styles.playerInfo} onPress={onPlayerPress} activeOpacity={0.6}>
-          <Text style={styles.playerName}>
-            {score.player?.display_first_name ?? score.player?.first_name}{" "}
-            {score.player?.display_last_name ?? score.player?.last_name}
-          </Text>
-          <Text style={styles.country}>{score.player?.country}</Text>
-        </TouchableOpacity>
-        <View style={styles.scoreRight}>
-          {terminalBadge ? (
-            <Text style={[styles.badge, { width: showToday ? 68 + 52 + 8 : 52, textAlign: "right" }]}>{terminalBadge}</Text>
-          ) : (
-            <>
-              {showToday && (
-                <View style={styles.todayCell}>
-                  {hasRoundData && todayPar != null ? (
-                    <>
-                      <Text style={[styles.todayScore, todayPar < 0 && styles.under, todayPar > 0 && styles.over]}>
-                        {formatScore(todayPar)}
-                      </Text>
-                      <Text style={styles.thruText}>
-                        {todayThru === "F" ? "F" : todayThru ? `T${todayThru}` : ""}
-                      </Text>
-                    </>
-                  ) : (
-                    <Text style={styles.thruText}>—</Text>
-                  )}
-                </View>
-              )}
-              <View style={styles.totalCellWrap}>
-                {missedCut ? (
-                  <Text style={styles.badge}>MC</Text>
+    <TouchableOpacity style={styles.row} onPress={onScorecard} activeOpacity={0.7}>
+      <Text style={styles.place}>{score.display_place ?? "—"}</Text>
+      <TouchableOpacity style={styles.playerInfo} onPress={onPlayerPress} activeOpacity={0.6}>
+        <Text style={styles.playerName}>
+          {score.player?.display_first_name ?? score.player?.first_name}{" "}
+          {score.player?.display_last_name ?? score.player?.last_name}
+        </Text>
+        <Text style={styles.country}>{score.player?.country}</Text>
+      </TouchableOpacity>
+      <View style={styles.scoreRight}>
+        {terminalBadge ? (
+          <Text style={[styles.badge, { width: showToday ? 68 + 52 + 8 : 52, textAlign: "right" }]}>{terminalBadge}</Text>
+        ) : (
+          <>
+            {showToday && (
+              <View style={styles.todayCell}>
+                {hasRoundData && todayPar != null ? (
+                  <>
+                    <Text style={[styles.todayScore, todayPar < 0 && styles.under, todayPar > 0 && styles.over]}>
+                      {formatScore(todayPar)}
+                    </Text>
+                    <Text style={styles.thruText}>
+                      {todayThru === "F" ? "F" : todayThru ? `T${todayThru}` : ""}
+                    </Text>
+                  </>
                 ) : (
-                  <Text style={[styles.score, score.par < 0 && styles.under, score.par > 0 && styles.over]}>
-                    {formatScore(score.par)}
-                  </Text>
+                  <Text style={styles.thruText}>—</Text>
                 )}
               </View>
-            </>
-          )}
-          <Text style={[styles.expandCaret, isExpanded && styles.expandCaretOpen]}>›</Text>
-        </View>
-      </TouchableOpacity>
-
-      {isExpanded && (
-        <View style={styles.expandPanel}>
-          {/* Stat strip: TOT | THRU | R1 … R4 */}
-          <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.statStrip}>
-            <StatCell
-              label="TOT"
-              value={terminalBadge ?? (missedCut ? "MC" : formatScore(score.par))}
-              under={!terminalBadge && !missedCut && score.par < 0}
-              over={!terminalBadge && !missedCut && score.par > 0}
-              colors={colors}
-            />
-            <StatCell
-              label="THRU"
-              value={todayThru === "F" ? "F" : todayThru ? `T${todayThru}` : "—"}
-              colors={colors}
-            />
-            {roundBreakdown.map((r) => {
-              const isActive = displayRoundKey === r.key;
-              const detail = score.details?.[r.key] as GolfRoundDetail | undefined;
-              const hasHoles = !!(detail?.scores && Object.keys(detail.scores).length > 0) ||
-                               !!(detail?.to_pars && Object.keys(detail.to_pars).length > 0);
-              return (
-                <StatCell
-                  key={r.key}
-                  label={r.label.toUpperCase()}
-                  value={r.par != null ? formatScore(r.par) : "—"}
-                  under={r.par != null && r.par < 0}
-                  over={r.par != null && r.par > 0}
-                  active={isActive && hasHoles}
-                  onPress={hasHoles ? () => setSelectedRoundKey(isActive ? null : r.key) : undefined}
-                  colors={colors}
-                />
-              );
-            })}
-          </ScrollView>
-
-          {/* Hole-by-hole grid — switches based on tapped round */}
-          {displayDetail != null && (
-            <HoleGrid detail={displayDetail} colors={colors} />
-          )}
-        </View>
-      )}
-    </View>
-  );
-}
-
-// ---------------------------------------------------------------------------
-// Stat cell — used inside the expanded panel stat strip
-// ---------------------------------------------------------------------------
-
-function StatCell({
-  label,
-  value,
-  under,
-  over,
-  active,
-  onPress,
-  colors,
-}: {
-  label: string;
-  value: string;
-  under?: boolean;
-  over?: boolean;
-  active?: boolean;
-  onPress?: () => void;
-  colors: Palette;
-}) {
-  const valueColor = under ? colors.primary : over ? (colors.error ?? "#ef4444") : colors.text;
-  const inner = (
-    <View style={{
-      alignItems: "center",
-      minWidth: 48,
-      paddingHorizontal: 6,
-      paddingVertical: 4,
-      borderRadius: 6,
-      backgroundColor: active ? colors.primary + "22" : "transparent",
-    }}>
-      <Text style={{ fontSize: 10, fontWeight: "700", color: active ? colors.primary : colors.textSecondary, textTransform: "uppercase", letterSpacing: 0.4, marginBottom: 3 }}>
-        {label}
-      </Text>
-      <Text style={{ fontSize: 15, fontWeight: "700", color: active ? colors.primary : valueColor }}>
-        {value}
-      </Text>
-    </View>
-  );
-  if (onPress) {
-    return <TouchableOpacity onPress={onPress} activeOpacity={0.7}>{inner}</TouchableOpacity>;
-  }
-  return inner;
-}
-
-// ---------------------------------------------------------------------------
-// Hole-by-hole grid — shown in the expanded accordion panel
-// ---------------------------------------------------------------------------
-
-const HOLE_COL = 28;
-const TOTAL_COL = 36;
-
-function holeScoreColors(toPar: number | null, colors: Palette) {
-  if (toPar == null)  return { bg: "transparent", border: colors.border, text: colors.text };
-  if (toPar <= -2)    return { bg: "#EAB308",     border: "#EAB308",     text: "#fff" }; // eagle – gold
-  if (toPar === -1)   return { bg: colors.primary, border: colors.primary, text: "#fff" }; // birdie – green
-  if (toPar === 0)    return { bg: "transparent",  border: colors.border,  text: colors.text }; // par
-  if (toPar === 1)    return { bg: "transparent",  border: colors.error ?? "#ef4444", text: colors.error ?? "#ef4444" }; // bogey
-  return               { bg: colors.error ?? "#ef4444", border: colors.error ?? "#ef4444", text: "#fff" }; // double+
-}
-
-function HoleGrid({ detail, colors }: { detail: GolfRoundDetail; colors: Palette }) {
-  const hasAnyScore =
-    (detail.scores && Object.keys(detail.scores).length > 0) ||
-    (detail.to_pars && Object.keys(detail.to_pars).length > 0);
-
-  if (!hasAnyScore) return null;
-
-  return (
-    <View style={{ borderTopWidth: StyleSheet.hairlineWidth, borderTopColor: colors.border, paddingHorizontal: spacing.md, paddingVertical: spacing.sm }}>
-      <HoleHalf holes={[1,2,3,4,5,6,7,8,9]} label="OUT" detail={detail} colors={colors} />
-      <View style={{ height: StyleSheet.hairlineWidth, backgroundColor: colors.border, marginVertical: spacing.xs }} />
-      <HoleHalf holes={[10,11,12,13,14,15,16,17,18]} label="IN" detail={detail} colors={colors} />
-    </View>
-  );
-}
-
-function HoleHalf({
-  holes,
-  label,
-  detail,
-  colors,
-}: {
-  holes: number[];
-  label: string;
-  detail: GolfRoundDetail;
-  colors: Palette;
-}) {
-  const played = holes.filter((h) => detail.scores?.[String(h)] != null);
-  const totalStrokes = played.reduce((s, h) => s + (detail.scores![String(h)] ?? 0), 0);
-  const totalPar    = played.reduce((s, h) => s + (detail.course_pars?.[String(h)] ?? 0), 0);
-  const halfToPar   = played.length > 0 ? totalStrokes - totalPar : null;
-
-  const headerStyle: object = { fontSize: 10, fontWeight: "700" as const, color: colors.textSecondary, textAlign: "center" as const, flex: 1 };
-  const parStyle:    object = { fontSize: 10, color: colors.textSecondary, textAlign: "center" as const, flex: 1, marginTop: 2 };
-
-  return (
-    <View>
-      {/* Row 1: hole numbers */}
-      <View style={{ flexDirection: "row", alignItems: "center" }}>
-        {holes.map((h) => (
-          <Text key={h} style={headerStyle}>{h}</Text>
-        ))}
-        <Text style={{ ...headerStyle, flex: 0, width: TOTAL_COL }}>{label}</Text>
-      </View>
-
-      {/* Row 2: par */}
-      <View style={{ flexDirection: "row", alignItems: "center" }}>
-        {holes.map((h) => (
-          <Text key={h} style={parStyle}>{detail.course_pars?.[String(h)] ?? "—"}</Text>
-        ))}
-        <Text style={{ ...parStyle, flex: 0, width: TOTAL_COL, fontWeight: "600" as const }}>
-          {totalPar || "—"}
-        </Text>
-      </View>
-
-      {/* Row 3: player scores */}
-      <View style={{ flexDirection: "row", alignItems: "center", marginTop: 4 }}>
-        {holes.map((h) => {
-          const strokes = detail.scores?.[String(h)] ?? null;
-          const toPar   = detail.to_pars?.[String(h)] ?? null;
-          const { bg, border, text } = holeScoreColors(strokes != null ? toPar : null, colors);
-          const isCircle = toPar != null && toPar <= 0;
-          return (
-            <View key={h} style={{ flex: 1, alignItems: "center" }}>
-              {strokes != null ? (
-                <View style={{
-                  width: 22, height: 22,
-                  borderRadius: isCircle ? 11 : 3,
-                  backgroundColor: bg,
-                  borderWidth: 1.5,
-                  borderColor: border,
-                  alignItems: "center",
-                  justifyContent: "center",
-                }}>
-                  <Text style={{ fontSize: 11, fontWeight: "700", color: text }}>{strokes}</Text>
-                </View>
+            )}
+            <View style={styles.totalCellWrap}>
+              {missedCut ? (
+                <Text style={styles.badge}>MC</Text>
               ) : (
-                <Text style={{ fontSize: 11, color: colors.border }}>·</Text>
+                <Text style={[styles.score, score.par < 0 && styles.under, score.par > 0 && styles.over]}>
+                  {formatScore(score.par)}
+                </Text>
               )}
             </View>
-          );
-        })}
-        {/* Half total */}
-        <View style={{ flex: 0, width: TOTAL_COL, alignItems: "center" }}>
-          {played.length > 0 && (
-            <Text style={{
-              fontSize: 13, fontWeight: "700",
-              color: halfToPar != null && halfToPar < 0 ? colors.primary
-                   : halfToPar != null && halfToPar > 0 ? (colors.error ?? "#ef4444")
-                   : colors.text,
-            }}>
-              {totalStrokes}
-            </Text>
-          )}
-        </View>
+          </>
+        )}
+        <Text style={styles.expandCaret}>›</Text>
       </View>
-    </View>
+    </TouchableOpacity>
   );
 }
 
@@ -1000,6 +801,7 @@ function PlayerSheet({
                 <Image
                   source={{ uri: player.photo }}
                   style={{ width: 64, height: 64, borderRadius: 32, backgroundColor: colors.border }}
+                  cachePolicy="memory-disk"
                 />
               ) : (
                 <View style={{
@@ -1266,22 +1068,8 @@ function createStyles(colors: Palette) {
     over: { color: colors.error ?? "#ef4444" },
     badge: { ...typography.caption, color: colors.textSecondary, fontWeight: "700" },
     chevron: { ...typography.h2, color: colors.textSecondary, lineHeight: 24 },
-    expandCaret: { ...typography.body, color: colors.textSecondary, marginLeft: 4, transform: [{ rotate: "0deg" }] },
-    expandCaretOpen: { transform: [{ rotate: "90deg" }] },
+    expandCaret: { ...typography.body, color: colors.textSecondary, marginLeft: 4 },
     separator: { height: 1, backgroundColor: colors.border },
-
-    // Expanded panel
-    expandPanel: {
-      backgroundColor: colors.background,
-      borderTopWidth: StyleSheet.hairlineWidth,
-      borderTopColor: colors.border,
-    },
-    statStrip: {
-      paddingVertical: spacing.sm + 2,
-      paddingHorizontal: spacing.md,
-      gap: spacing.xs,
-      alignItems: "center",
-    },
 
     // Tournament card (upcoming / final)
     listContent: { padding: spacing.md, gap: spacing.sm },

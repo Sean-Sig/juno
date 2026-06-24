@@ -604,12 +604,9 @@ function PlayersView({ colors }: { colors: Palette }) {
             <PlayerCard
               firstName={item.display_first_name ?? item.first_name}
               lastName={item.display_last_name ?? item.last_name}
-              country={
-                [
-                  item.position,
-                  item.jersey_number ? `#${item.jersey_number}` : null,
-                  item.country,
-                ]
+              country={item.country}
+              subtitle={
+                [item.position, item.jersey_number ? `#${item.jersey_number}` : null]
                   .filter(Boolean)
                   .join(" · ") || null
               }
