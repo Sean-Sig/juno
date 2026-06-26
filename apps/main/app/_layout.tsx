@@ -5,6 +5,7 @@ import * as SplashScreen from "expo-splash-screen";
 import React, { useEffect } from "react";
 import { AuthProvider, useAuth, SportProvider, useSport } from "@juno/api";
 import { ThemeProvider, useTheme, typography } from "@juno/ui";
+import { FollowedPlayersProvider } from "../context/FollowedPlayersContext";
 
 SplashScreen.preventAutoHideAsync();
 
@@ -31,7 +32,7 @@ function RootNavigator() {
     const inOnboarding = segments[0] === "onboarding";
     const inApp = segments[0] === "(app)";
     // Root-level detail screens pushed over the tab layout — don't redirect these
-    const inDetailScreen = ["tournament", "player", "game", "match"].includes(segments[0] as string);
+    const inDetailScreen = ["tournament", "player", "game", "match", "scorecard"].includes(segments[0] as string);
 
     if (!session) {
       if (!inAuth) router.replace("/(auth)/login");
@@ -67,12 +68,15 @@ function RootNavigator() {
   return (
     <>
       <StatusBar style={mode === "dark" ? "light" : "dark"} />
-      <Stack screenOptions={{ headerShown: false }}>
-        <Stack.Screen name="player/[id]" options={{ ...detailHeader, title: "Player" }} />
-        <Stack.Screen name="game/[id]" options={{ ...detailHeader, title: "Game" }} />
-        <Stack.Screen name="tournament/[id]" options={{ headerShown: false }} />
-        <Stack.Screen name="match/[id]" options={{ headerShown: false }} />
-      </Stack>
+      <FollowedPlayersProvider>
+        <Stack screenOptions={{ headerShown: false }}>
+          <Stack.Screen name="player/[id]" options={{ ...detailHeader, title: "Player" }} />
+          <Stack.Screen name="game/[id]" options={{ ...detailHeader, title: "Game" }} />
+          <Stack.Screen name="tournament/[id]" options={{ headerShown: false }} />
+          <Stack.Screen name="match/[id]" options={{ ...detailHeader, title: "Match" }} />
+          <Stack.Screen name="scorecard" options={{ ...detailHeader, title: "Scorecard" }} />
+        </Stack>
+      </FollowedPlayersProvider>
     </>
   );
 }

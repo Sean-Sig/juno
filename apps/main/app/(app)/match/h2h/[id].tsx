@@ -505,13 +505,13 @@ export default function H2HScreen() {
           )}
         </View>
 
-        {/* ── Scout Report ── */}
+        {/* ── Scout Report — hidden until launch ──
         <View style={styles.section}>
           <Text style={styles.sectionTitle}>Scout Report</Text>
 
           {analysis ? (
             <>
-              {/* Predicted winner banner */}
+              {/* Predicted winner banner *}
               <View style={[styles.predictionBanner, { backgroundColor: accent + "18", borderColor: accent + "44" }]}>
                 <View style={styles.predictionLeft}>
                   <Text style={[styles.predictionLabel, { color: colors.textSecondary }]}>{isDoubles ? "Predicted Winners" : "Predicted Winner"}</Text>
@@ -526,10 +526,10 @@ export default function H2HScreen() {
                 </View>
               </View>
 
-              {/* Narrative */}
+              {/* Narrative *}
               <Text style={[styles.narrative, { color: colors.text }]}>{analysis.narrative}</Text>
 
-              {/* Key factors */}
+              {/* Key factors *}
               <Text style={[styles.factorsLabel, { color: colors.textSecondary }]}>Key Factors</Text>
               {analysis.key_factors.map((f, i) => (
                 <View key={i} style={styles.factorRow}>
@@ -538,7 +538,7 @@ export default function H2HScreen() {
                 </View>
               ))}
 
-              {/* Edges */}
+              {/* Edges *}
               <View style={styles.edgesRow}>
                 <View style={styles.edgeCol}>
                   <Text style={[styles.edgePlayer, { color: accent }]} numberOfLines={1}>
@@ -577,6 +577,7 @@ export default function H2HScreen() {
             </>
           )}
         </View>
+        ── */}
 
       </ScrollView>
     </SafeAreaView>

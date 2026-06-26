@@ -1,16 +1,19 @@
-import React, { useMemo, useEffect, useState } from "react";
+import React, { useMemo, useEffect, useRef, useState } from "react";
 import {
   View,
   Text,
   ScrollView,
   StyleSheet,
   TouchableOpacity,
+  Animated,
 } from "react-native";
+import { Image } from "expo-image";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { useLocalSearchParams, useNavigation, useRouter } from "expo-router";
 import { Ionicons } from "@expo/vector-icons";
 import { GolfRoundDetail, GolfCourse } from "@juno/api";
 import { useTheme, spacing, typography, radius, type Palette } from "@juno/ui";
+import { useFollowedPlayers } from "../context/FollowedPlayersContext";
 
 // ---------------------------------------------------------------------------
 // Constants
@@ -50,6 +53,13 @@ function hasHoleData(detail: GolfRoundDetail | undefined): boolean {
   );
 }
 
+function initialsOf(name: string): string {
+  const parts = name.trim().split(/\s+/).filter(Boolean);
+  const first = parts[0]?.charAt(0) ?? "";
+  const last = parts.length > 1 ? parts[parts.length - 1].charAt(0) : "";
+  return (first + last).toUpperCase() || "?";
+}
+
 function holeScoreColors(toPar: number | null, colors: Palette) {
   if (toPar == null)  return { bg: "transparent", border: colors.border, text: colors.text };
   if (toPar <= -2)    return { bg: "#EAB308",      border: "#EAB308",      text: "#fff" }; // eagle – gold
@@ -57,6 +67,44 @@ function holeScoreColors(toPar: number | null, colors: Palette) {
   if (toPar === 0)    return { bg: "transparent",  border: colors.border,  text: colors.text }; // par
   if (toPar === 1)    return { bg: "transparent",  border: colors.error ?? "#ef4444", text: colors.error ?? "#ef4444" }; // bogey
   return               { bg: colors.error ?? "#ef4444", border: colors.error ?? "#ef4444", text: "#fff" }; // double+
+}
+
+// ---------------------------------------------------------------------------
+// Avatar — player photo, falls back to initials
+// ---------------------------------------------------------------------------
+
+function Avatar({
+  photo,
+  name,
+  size,
+  colors,
+}: {
+  photo: string | null | undefined;
+  name: string;
+  size: number;
+  colors: Palette;
+}) {
+  const style = { width: size, height: size, borderRadius: size / 2 };
+  if (photo) {
+    return (
+      <Image
+        source={{ uri: photo }}
+        style={[style, { backgroundColor: colors.border }]}
+        cachePolicy="memory-disk"
+      />
+    );
+  }
+  return (
+    <View style={[style, {
+      backgroundColor: colors.primary + "22",
+      alignItems: "center",
+      justifyContent: "center",
+    }]}>
+      <Text style={{ fontSize: size * 0.36, fontWeight: "700", color: colors.primary }}>
+        {initialsOf(name)}
+      </Text>
+    </View>
+  );
 }
 
 // ---------------------------------------------------------------------------
@@ -70,7 +118,11 @@ export default function ScorecardScreen() {
   const router = useRouter();
 
   const {
+    playerId,
     playerName,
+    country,
+    photo,
+    ranking,
     tournamentName,
     details: detailsJson,
     totalPar,
@@ -78,7 +130,11 @@ export default function ScorecardScreen() {
     displayPlace,
     courses: coursesJson,
   } = useLocalSearchParams<{
+    playerId: string;
     playerName: string;
+    country: string;
+    photo: string;
+    ranking: string;
     tournamentName: string;
     details: string;
     totalPar: string;
@@ -86,6 +142,21 @@ export default function ScorecardScreen() {
     displayPlace: string;
     courses: string;
   }>();
+
+  const { isFollowed, follow, unfollow } = useFollowedPlayers();
+  const [followLoading, setFollowLoading] = useState(false);
+  const followed = playerId ? isFollowed(playerId) : false;
+
+  const handleFollow = async () => {
+    if (!playerId || followLoading) return;
+    setFollowLoading(true);
+    try {
+      if (followed) await unfollow(playerId);
+      else await follow(playerId);
+    } finally {
+      setFollowLoading(false);
+    }
+  };
 
   const details = useMemo<Record<string, GolfRoundDetail>>(() => {
     try { return JSON.parse(detailsJson ?? "{}"); } catch { return {}; }
@@ -110,32 +181,114 @@ export default function ScorecardScreen() {
   const displayRoundKey = selectedRoundKey ?? roundsWithHoles[roundsWithHoles.length - 1]?.key ?? null;
   const displayDetail = displayRoundKey ? details[displayRoundKey] : null;
 
+  // Most recent round overall — drives the sticky header's "current status", independent
+  // of whichever round the user has tapped to inspect below.
+  const latestRound = rounds[rounds.length - 1] ?? null;
+  const latestRoundStatus = latestRound
+    ? latestRound.detail.thru === "F"
+      ? "Final"
+      : latestRound.detail.thru
+      ? `Thru ${latestRound.detail.thru}`
+      : null
+    : null;
+
+  // Sticky header — fades in once the user scrolls past the main player header,
+  // so position/score stay visible while reading a long (4–5 round) scorecard.
+  const [mainHeaderHeight, setMainHeaderHeight] = useState(0);
+  const [stickyVisible, setStickyVisible] = useState(false);
+  const stickyAnim = useRef(new Animated.Value(0)).current;
+
+  useEffect(() => {
+    Animated.timing(stickyAnim, {
+      toValue: stickyVisible ? 1 : 0,
+      duration: 180,
+      useNativeDriver: true,
+    }).start();
+  }, [stickyVisible]);
+
   useEffect(() => {
     navigation.setOptions({
       title: playerName ?? "Scorecard",
       headerLeft: () => (
         <TouchableOpacity
-          onPress={() => router.navigate("/(app)/tournaments")}
+          onPress={() => (router.canGoBack() ? router.back() : router.navigate("/(app)/tournaments"))}
           style={{ paddingRight: spacing.sm }}
         >
           <Ionicons name="chevron-back" size={26} color={colors.text} />
         </TouchableOpacity>
       ),
-      headerRight: () => null,
+      headerRight: () =>
+        playerId ? (
+          <TouchableOpacity
+            onPress={handleFollow}
+            disabled={followLoading}
+            activeOpacity={0.75}
+            style={[styles.followButton, followed && styles.followButtonActive]}
+          >
+            <Text style={[styles.followButtonText, followed && styles.followButtonTextActive]}>
+              {followed ? "Following" : "Follow"}
+            </Text>
+          </TouchableOpacity>
+        ) : null,
     });
-  }, [playerName, colors.text]);
+  }, [playerName, playerId, followed, followLoading, colors.text]);
 
   const parInt = parseInt(String(totalPar), 10);
   const strokesInt = parseInt(String(totalStrokes), 10);
 
   return (
     <SafeAreaView style={styles.container} edges={["bottom"]}>
-      <ScrollView contentContainerStyle={styles.scroll}>
+      {/* Sticky header — overlays once scrolled past the main header below */}
+      <Animated.View
+        pointerEvents={stickyVisible ? "auto" : "none"}
+        style={[
+          styles.stickyBar,
+          {
+            opacity: stickyAnim,
+            transform: [{ translateY: stickyAnim.interpolate({ inputRange: [0, 1], outputRange: [-8, 0] }) }],
+          },
+        ]}
+      >
+        <View style={styles.stickyLeft}>
+          <Avatar photo={photo} name={playerName ?? ""} size={26} colors={colors} />
+          <Text style={styles.stickyName} numberOfLines={1}>{playerName}</Text>
+        </View>
+        <View style={styles.stickyRight}>
+          {latestRoundStatus && (
+            <View style={styles.stickyStatusBadge}>
+              <Text style={styles.stickyStatusText}>{latestRoundStatus}</Text>
+            </View>
+          )}
+          {displayPlace ? <Text style={styles.stickyPlace}>{displayPlace}</Text> : null}
+          <Text style={[styles.stickyPar, { color: parColor(parInt, colors) }]}>
+            {formatPar(parInt)}
+          </Text>
+        </View>
+      </Animated.View>
+
+      <ScrollView
+        contentContainerStyle={styles.scroll}
+        onScroll={(e) => {
+          const y = e.nativeEvent.contentOffset.y;
+          const shouldShow = mainHeaderHeight > 0 && y > mainHeaderHeight;
+          if (shouldShow !== stickyVisible) setStickyVisible(shouldShow);
+        }}
+        scrollEventThrottle={16}
+      >
 
         {/* ── Player / tournament header ───────────────────────────────── */}
-        <View style={styles.header}>
+        <View style={styles.header} onLayout={(e) => setMainHeaderHeight(e.nativeEvent.layout.height)}>
+          <Avatar photo={photo} name={playerName ?? ""} size={52} colors={colors} />
           <View style={styles.headerLeft}>
             <Text style={styles.playerName}>{playerName}</Text>
+            <View style={styles.playerMetaRow}>
+              {country ? <Text style={styles.tournamentName}>{country}</Text> : null}
+              {ranking ? (
+                <View style={styles.rankBadge}>
+                  <Text style={styles.rankBadgeText}>WR #{ranking}</Text>
+                </View>
+              ) : null}
+            </View>
             <Text style={styles.tournamentName}>{tournamentName}</Text>
           </View>
           <View style={styles.headerRight}>
@@ -165,6 +318,10 @@ export default function ScorecardScreen() {
           </View>
         ) : (
           <>
+            {roundsWithHoles.length > 1 && (
+              <Text style={styles.tableHint}>Tap a round below to see its hole-by-hole breakdown</Text>
+            )}
+
             {/* ── Round-by-round table ─────────────────────────────────── */}
             <View style={styles.table}>
 
@@ -174,6 +331,7 @@ export default function ScorecardScreen() {
                 <Text style={[styles.th, styles.colStrokes]}>Strokes</Text>
                 <Text style={[styles.th, styles.colPar]}>To Par</Text>
                 <Text style={[styles.th, styles.colRunning]}>Running</Text>
+                <View style={styles.colChevron} />
               </View>
 
               {/* Round rows */}
@@ -181,7 +339,10 @@ export default function ScorecardScreen() {
                 let running = 0;
                 return rounds.map(({ key, detail }, i) => {
                   const strokes = detail.strokes ?? 0;
-                  const roundPar = strokes - coursePar;
+                  // Use the backend's precomputed to-par when available — it accounts for
+                  // holes actually played. Falling back to (strokes - full course par) would
+                  // wildly understate an in-progress round (e.g. 11 strokes thru 3 holes vs. par 70).
+                  const roundPar = detail.par ?? (strokes - coursePar);
                   running += roundPar;
                   const isLast = i === rounds.length - 1;
                   const status = detail.thru === "F"
@@ -190,7 +351,11 @@ export default function ScorecardScreen() {
                     ? `Thru ${detail.thru}`
                     : null;
 
-                  const tappable = hasHoleData(detail);
+                  // Only show the switch affordance when there's actually more than one
+                  // round to switch between — otherwise tapping the lone row toggles
+                  // selectedRoundKey to null, which falls right back to the same round
+                  // and looks like the tap did nothing.
+                  const tappable = hasHoleData(detail) && roundsWithHoles.length > 1;
                   const isActive = tappable && displayRoundKey === key;
 
                   return (
@@ -220,6 +385,12 @@ export default function ScorecardScreen() {
                       <Text style={[styles.td, styles.colRunning, { color: parColor(running, colors) }]}>
                         {formatPar(running)}
                       </Text>
+                      <Ionicons
+                        name={isActive ? "chevron-up" : "chevron-down"}
+                        size={16}
+                        color={tappable ? colors.textSecondary : "transparent"}
+                        style={styles.roundChevron}
+                      />
                     </TouchableOpacity>
                   );
                 });
@@ -234,13 +405,17 @@ export default function ScorecardScreen() {
                     {formatPar(parInt)}
                   </Text>
                   <View style={styles.colRunning} />
+                  <View style={styles.colChevron} />
                 </View>
               )}
             </View>
 
             {/* ── Hole-by-hole grid for the selected round ─────────────── */}
             {displayDetail && hasHoleData(displayDetail) && (
-              <HoleGrid detail={displayDetail} colors={colors} styles={styles} />
+              <>
+                <HoleGrid detail={displayDetail} colors={colors} styles={styles} />
+                <ScoreLegend colors={colors} styles={styles} />
+              </>
             )}
 
             {/* ── Round breakdown bars ─────────────────────────────────── */}
@@ -361,6 +536,46 @@ function HoleHalf({
 }
 
 // ---------------------------------------------------------------------------
+// Legend — explains the hole-score color coding above
+// ---------------------------------------------------------------------------
+
+function ScoreLegend({
+  colors,
+  styles,
+}: {
+  colors: Palette;
+  styles: ReturnType<typeof createStyles>;
+}) {
+  const items: { label: string; bg: string; border: string; text: string; circle: boolean }[] = [
+    { label: "Eagle+", ...holeScoreColors(-2, colors), circle: true },
+    { label: "Birdie", ...holeScoreColors(-1, colors), circle: true },
+    { label: "Par", ...holeScoreColors(0, colors), circle: false },
+    { label: "Bogey", ...holeScoreColors(1, colors), circle: false },
+    { label: "Double+", ...holeScoreColors(2, colors), circle: false },
+  ];
+
+  return (
+    <View style={styles.legendRow}>
+      {items.map((item) => (
+        <View key={item.label} style={styles.legendItem}>
+          <View
+            style={[
+              styles.legendSwatch,
+              {
+                borderRadius: item.circle ? 8 : 3,
+                backgroundColor: item.bg,
+                borderColor: item.border,
+              },
+            ]}
+          />
+          <Text style={styles.legendLabel}>{item.label}</Text>
+        </View>
+      ))}
+    </View>
+  );
+}
+
+// ---------------------------------------------------------------------------
 // Visual round bars — shows each round as a horizontal bar proportional to score
 // ---------------------------------------------------------------------------
 
@@ -388,7 +603,7 @@ function RoundBars({
       {rounds.map(({ key, detail }) => {
         const s = detail.strokes ?? 0;
         if (s === 0) return null;
-        const roundPar = s - coursePar;
+        const roundPar = detail.par ?? (s - coursePar);
         const fill = 0.3 + ((s - min) / range) * 0.7; // 30%–100% width
 
         return (
@@ -441,12 +656,69 @@ function createStyles(colors: Palette) {
       borderBottomWidth: StyleSheet.hairlineWidth,
       borderBottomColor: colors.border,
     },
-    headerLeft: { flex: 1 },
+    headerLeft: { flex: 1, marginLeft: spacing.md },
     playerName: { ...typography.h3, color: colors.text, fontWeight: "700" },
     tournamentName: { ...typography.caption, color: colors.textSecondary, marginTop: 2 },
     headerRight: { alignItems: "flex-end" },
     totalPar: { ...typography.h2, fontWeight: "700" },
     totalPlace: { ...typography.caption, color: colors.textSecondary, marginTop: 2 },
+
+    // Player meta (country + world ranking)
+    playerMetaRow: { flexDirection: "row", alignItems: "center", gap: 6, marginTop: 2 },
+    rankBadge: {
+      backgroundColor: colors.primary + "18",
+      borderRadius: 4,
+      paddingHorizontal: 6,
+      paddingVertical: 1,
+    },
+    rankBadgeText: { ...typography.caption, color: colors.primary, fontWeight: "700", fontSize: 10 },
+
+    // Follow button (header right)
+    followButton: {
+      paddingHorizontal: 14,
+      paddingVertical: 7,
+      borderRadius: radius.full,
+      borderWidth: 1.5,
+      borderColor: colors.primary,
+      backgroundColor: "transparent",
+      marginRight: spacing.sm,
+    },
+    followButtonActive: { backgroundColor: colors.primary },
+    followButtonText: { ...typography.label, color: colors.primary, fontWeight: "700", fontSize: 12 },
+    followButtonTextActive: { color: colors.background },
+
+    // Sticky header (overlay shown while scrolled past the main header)
+    stickyBar: {
+      position: "absolute",
+      top: 0,
+      left: 0,
+      right: 0,
+      zIndex: 10,
+      flexDirection: "row",
+      alignItems: "center",
+      justifyContent: "space-between",
+      paddingHorizontal: spacing.md,
+      paddingVertical: spacing.sm,
+      backgroundColor: colors.card,
+      borderBottomWidth: StyleSheet.hairlineWidth,
+      borderBottomColor: colors.border,
+      shadowColor: "#000",
+      shadowOpacity: 0.08,
+      shadowRadius: 4,
+      elevation: 3,
+    },
+    stickyLeft: { flexDirection: "row", alignItems: "center", gap: 8, flex: 1, marginRight: spacing.sm },
+    stickyName: { ...typography.body, color: colors.text, fontWeight: "700", flex: 1 },
+    stickyRight: { flexDirection: "row", alignItems: "center", gap: 8 },
+    stickyStatusBadge: {
+      paddingHorizontal: 6,
+      paddingVertical: 2,
+      backgroundColor: (colors.live ?? colors.primary) + "25",
+      borderRadius: radius.sm,
+    },
+    stickyStatusText: { ...typography.caption, color: colors.live ?? colors.primary, fontWeight: "700", fontSize: 10 },
+    stickyPlace: { ...typography.caption, color: colors.textSecondary, fontWeight: "600" },
+    stickyPar: { ...typography.body, fontWeight: "800" },
 
     // Course bar
     courseBar: {
@@ -459,6 +731,13 @@ function createStyles(colors: Palette) {
       borderBottomColor: colors.border,
     },
     courseText: { ...typography.caption, color: colors.textSecondary },
+
+    tableHint: {
+      ...typography.caption,
+      color: colors.textSecondary,
+      marginHorizontal: spacing.md,
+      marginTop: spacing.sm,
+    },
 
     // Table
     table: {
@@ -532,6 +811,8 @@ function createStyles(colors: Palette) {
     colStrokes: { width: 64, textAlign: "right" },
     colPar: { width: 64, textAlign: "right" },
     colRunning: { width: 72, textAlign: "right" },
+    colChevron: { width: 20, alignItems: "flex-end" },
+    roundChevron: { width: 20, marginLeft: 4 },
 
     // Hole-by-hole grid
     holeGrid: {
@@ -550,6 +831,18 @@ function createStyles(colors: Palette) {
       backgroundColor: colors.border,
       marginVertical: spacing.xs,
     },
+
+    // Score legend
+    legendRow: {
+      flexDirection: "row",
+      justifyContent: "space-between",
+      marginHorizontal: spacing.md,
+      marginTop: spacing.sm,
+      paddingHorizontal: spacing.xs,
+    },
+    legendItem: { flexDirection: "row", alignItems: "center", gap: 4 },
+    legendSwatch: { width: 11, height: 11, borderWidth: 1.5 },
+    legendLabel: { ...typography.caption, color: colors.textSecondary, fontSize: 10 },
 
     // Round bars
     barsSection: {

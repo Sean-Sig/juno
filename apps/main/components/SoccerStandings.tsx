@@ -12,9 +12,10 @@ import {
   ScrollView,
 } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
+import { Image } from "expo-image";
 import { useRouter } from "expo-router";
 import { soccer, type SoccerTeam, type SoccerPlayer } from "@juno/api";
-import { PlayerCard, SkeletonCard, useTheme, spacing, typography, radius, type Palette } from "@juno/ui";
+import { PlayerCard, SkeletonCard, countryFlag, useTheme, spacing, typography, radius, type Palette } from "@juno/ui";
 import { useFollowedPlayers } from "../context/FollowedPlayersContext";
 
 // ---------------------------------------------------------------------------
@@ -33,7 +34,6 @@ const POSITIONS: { key: PositionFilter; label: string; match: (pos: string) => b
   { key: "FW", label: "Forwards", match: (p) => p.includes("forward") || p.includes("striker") || p.includes("attack") || p === "fw" },
 ];
 
-const LEAGUES = ["EPL", "LaLiga", "SerieA", "Bundesliga", "Ligue1", "MLS", "UCL", "UEL", "WorldCup"];
 const LEAGUE_LABELS: Record<string, string> = {
   EPL: "EPL",
   LaLiga: "La Liga",
@@ -53,16 +53,28 @@ const PER_PAGE = 50;
 // ---------------------------------------------------------------------------
 
 function groupByLeague(teams: SoccerTeam[]): Section[] {
-  const map = new Map<string, SoccerTeam[]>();
+  // Tournament leagues (e.g. World Cup) split teams into groups via `conference`
+  // ("Group A", "Group B", ...) and rank standings within each group separately,
+  // so groups must stay separate sections rather than one flat league-wide list.
+  const map = new Map<string, { league: string; conference: string | null; data: SoccerTeam[] }>();
   for (const t of teams) {
-    const key = t.league ?? "Other";
-    if (!map.has(key)) map.set(key, []);
-    map.get(key)!.push(t);
+    const league = t.league ?? "Other";
+    const conference = t.conference ?? null;
+    const key = conference ? `${league}::${conference}` : league;
+    if (!map.has(key)) map.set(key, { league, conference, data: [] });
+    map.get(key)!.data.push(t);
   }
-  const sections: Section[] = [];
-  for (const [key, data] of map.entries()) {
-    sections.push({
-      title: LEAGUE_LABELS[key] ?? key,
+  const leagueOrder = Object.keys(LEAGUE_LABELS);
+  const groups = [...map.values()].sort((a, b) => {
+    const order = leagueOrder.indexOf(a.league) - leagueOrder.indexOf(b.league);
+    if (order !== 0) return order;
+    return (a.conference ?? "").localeCompare(b.conference ?? "");
+  });
+
+  return groups.map(({ league, conference, data }) => {
+    const leagueLabel = LEAGUE_LABELS[league] ?? league;
+    return {
+      title: conference ? `${leagueLabel} · ${conference}` : leagueLabel,
       data: data.sort((a, b) => {
         if (a.standing_rank != null && b.standing_rank != null) {
           return a.standing_rank - b.standing_rank;
@@ -70,13 +82,8 @@ function groupByLeague(teams: SoccerTeam[]): Section[] {
         if ((b.points ?? 0) !== (a.points ?? 0)) return (b.points ?? 0) - (a.points ?? 0);
         return (b.goal_difference ?? 0) - (a.goal_difference ?? 0);
       }),
-    });
-  }
-  sections.sort((a, b) => {
-    const order = Object.values(LEAGUE_LABELS);
-    return order.indexOf(a.title) - order.indexOf(b.title);
+    };
   });
-  return sections;
 }
 
 function TeamRow({ team, rank }: { team: SoccerTeam; rank: number }) {
@@ -87,9 +94,19 @@ function TeamRow({ team, rank }: { team: SoccerTeam; rank: number }) {
     <View style={styles.teamRow}>
       <Text style={styles.rank}>{rank}</Text>
       <View style={styles.nameCol}>
-        <Text style={styles.teamName} numberOfLines={1}>
-          {team.name}
-        </Text>
+        <View style={styles.nameRow}>
+          {team.logo ? (
+            <Image source={{ uri: team.logo }} style={styles.teamLogo} cachePolicy="memory-disk" contentFit="contain" />
+          ) : (
+            (() => {
+              const flag = countryFlag(team.name);
+              return flag ? <Text style={styles.teamFlag}>{flag}</Text> : null;
+            })()
+          )}
+          <Text style={styles.teamName} numberOfLines={1}>
+            {team.name}
+          </Text>
+        </View>
         {team.abbreviation && <Text style={styles.teamAbbrev}>{team.abbreviation}</Text>}
       </View>
       <Text style={styles.wdl}>{team.wins}-{team.draws}-{team.losses}</Text>
@@ -119,52 +136,29 @@ function TableHeader() {
 // Teams view
 // ---------------------------------------------------------------------------
 
-type LeagueFilter = "all" | (typeof LEAGUES)[number];
-
 function TeamsView({ colors }: { colors: Palette }) {
   const styles = useMemo(() => createStyles(colors), [colors]);
-  const [leagueFilter, setLeagueFilter] = useState<LeagueFilter>("all");
   const [sections, setSections] = useState<Section[]>([]);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
 
-  const load = useCallback(async (league: LeagueFilter) => {
-    const { data } = await soccer.getTeams(league !== "all" ? { league } : undefined);
+  const load = useCallback(async () => {
+    const { data } = await soccer.getTeams();
     setSections(groupByLeague(data));
   }, []);
 
   useEffect(() => {
     setLoading(true);
-    load(leagueFilter).finally(() => setLoading(false));
-  }, [leagueFilter, load]);
+    load().finally(() => setLoading(false));
+  }, [load]);
 
   function onRefresh() {
     setRefreshing(true);
-    load(leagueFilter).finally(() => setRefreshing(false));
+    load().finally(() => setRefreshing(false));
   }
 
   return (
     <View style={{ flex: 1 }}>
-      <ScrollView
-        horizontal
-        showsHorizontalScrollIndicator={false}
-        style={styles.typePicker}
-        contentContainerStyle={styles.typePickerContent}
-      >
-        {(["all", ...LEAGUES] as LeagueFilter[]).map((key) => (
-          <TouchableOpacity
-            key={key}
-            style={[styles.typeChip, leagueFilter === key && styles.typeChipActive]}
-            onPress={() => setLeagueFilter(key)}
-            activeOpacity={0.7}
-          >
-            <Text style={[styles.typeChipText, leagueFilter === key && styles.typeChipTextActive]}>
-              {key === "all" ? "All" : LEAGUE_LABELS[key] ?? key}
-            </Text>
-          </TouchableOpacity>
-        ))}
-      </ScrollView>
-
       {loading ? (
         <View style={styles.center}>
           <ActivityIndicator color={colors.primary} />
@@ -183,10 +177,12 @@ function TeamsView({ colors }: { colors: Palette }) {
             <RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor={colors.primary} />
           }
           stickySectionHeadersEnabled
-          ListHeaderComponent={sections.length === 1 ? <TableHeader /> : undefined}
           renderSectionHeader={({ section }) => (
-            <View style={styles.sectionHeader}>
-              <Text style={styles.sectionTitle}>{section.title}</Text>
+            <View>
+              <View style={styles.sectionHeader}>
+                <Text style={styles.sectionTitle}>{section.title}</Text>
+              </View>
+              <TableHeader />
             </View>
           )}
           renderItem={({ item, index }) => <TeamRow team={item} rank={index + 1} />}
@@ -446,7 +442,10 @@ function createStyles(colors: Palette) {
     },
     rank: { ...typography.caption, color: colors.textSecondary, width: 22, textAlign: "center" },
     nameCol: { flex: 1, paddingHorizontal: spacing.xs },
-    teamName: { ...typography.label, color: colors.text, fontWeight: "600" },
+    nameRow: { flexDirection: "row", alignItems: "center" },
+    teamLogo: { width: 20, height: 20, marginRight: spacing.xs },
+    teamFlag: { fontSize: 18, marginRight: spacing.xs },
+    teamName: { ...typography.label, color: colors.text, fontWeight: "600", flexShrink: 1 },
     teamAbbrev: { ...typography.caption, color: colors.textSecondary },
     wdl: { ...typography.label, color: colors.text, width: 60, textAlign: "center" },
     pts: { ...typography.label, color: colors.primary, width: 36, textAlign: "center", fontWeight: "700" },

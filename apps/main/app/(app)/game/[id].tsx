@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useState } from "react";
+import React, { useEffect, useMemo, useRef, useState } from "react";
 import {
   View,
   Text,
@@ -6,6 +6,7 @@ import {
   ActivityIndicator,
   StyleSheet,
   ScrollView,
+  Animated,
 } from "react-native";
 import { Image } from "expo-image";
 import { SafeAreaView } from "react-native-safe-area-context";
@@ -79,6 +80,47 @@ export default function GameScreen() {
 
   const [game, setGame] = useState<Game | null>(null);
   const [loading, setLoading] = useState(true);
+
+  // Goal-flash animation — pop the scorer's number and flash a "GOAL" banner
+  // whenever a live soccer score ticks up (driven by the soccer_delta push).
+  const prevScores = useRef<{ away: number | null; home: number | null }>({ away: null, home: null });
+  const [goalTeam, setGoalTeam] = useState<"home" | "away" | null>(null);
+  const awayPulse = useRef(new Animated.Value(1)).current;
+  const homePulse = useRef(new Animated.Value(1)).current;
+  const bannerAnim = useRef(new Animated.Value(0)).current;
+
+  useEffect(() => {
+    prevScores.current = { away: null, home: null };
+    setGoalTeam(null);
+  }, [id]);
+
+  useEffect(() => {
+    if (activeSport !== "soccer" || !game) return;
+    const prev = prevScores.current;
+    prevScores.current = { away: game.away_score, home: game.home_score };
+
+    const scored: "home" | "away" | null =
+      game.status === "live" && game.away_score != null && prev.away != null && game.away_score > prev.away
+        ? "away"
+        : game.status === "live" && game.home_score != null && prev.home != null && game.home_score > prev.home
+          ? "home"
+          : null;
+    if (!scored) return;
+
+    setGoalTeam(scored);
+    const pulse = scored === "away" ? awayPulse : homePulse;
+    Animated.sequence([
+      Animated.spring(pulse, { toValue: 1.5, friction: 3, useNativeDriver: true }),
+      Animated.spring(pulse, { toValue: 1, friction: 4, useNativeDriver: true }),
+    ]).start();
+
+    bannerAnim.setValue(0);
+    Animated.sequence([
+      Animated.spring(bannerAnim, { toValue: 1, friction: 5, useNativeDriver: true }),
+      Animated.delay(1400),
+      Animated.timing(bannerAnim, { toValue: 0, duration: 250, useNativeDriver: true }),
+    ]).start(() => setGoalTeam(null));
+  }, [game?.away_score, game?.home_score, game?.status, activeSport]);
 
   useEffect(() => {
     if (!id) return;
@@ -260,7 +302,7 @@ export default function GameScreen() {
                 <View style={styles.liveDot} />
                 <Text style={styles.liveText}>
                   {periodLabel(game, activeSport)}
-                  {game.period_time ? ` · ${game.period_time}` : ""}
+                  {game.period_time ? ` · ${game.period_time}${activeSport === "soccer" ? "'" : ""}` : ""}
                 </Text>
               </View>
             )
@@ -283,6 +325,24 @@ export default function GameScreen() {
 
         {/* Scoreboard */}
         <View style={styles.scoreboard}>
+          {goalTeam && (
+            <Animated.View
+              style={[
+                styles.goalBanner,
+                {
+                  opacity: bannerAnim,
+                  transform: [
+                    { translateY: bannerAnim.interpolate({ inputRange: [0, 1], outputRange: [-8, 0] }) },
+                    { scale: bannerAnim.interpolate({ inputRange: [0, 1], outputRange: [0.85, 1] }) },
+                  ],
+                },
+              ]}
+            >
+              <Text style={styles.goalBannerText}>
+                ⚽ GOAL — {goalTeam === "away" ? (away?.name ?? "Away") : (home?.name ?? "Home")}
+              </Text>
+            </Animated.View>
+          )}
           <View style={[styles.teamBlock, awayWins && styles.teamBlockWinner]}>
             {awayFlag && <Text style={styles.teamFlagLarge}>{awayFlag}</Text>}
             <Text style={styles.teamName} numberOfLines={1} adjustsFontSizeToFit minimumFontScale={0.6}>
@@ -294,9 +354,9 @@ export default function GameScreen() {
               </Text>
             )}
             {(isLive || isFinished) && game.away_score != null && (
-              <Text style={[styles.score, awayWins && styles.scoreWinner]}>
+              <Animated.Text style={[styles.score, awayWins && styles.scoreWinner, { transform: [{ scale: awayPulse }] }]}>
                 {game.away_score}
-              </Text>
+              </Animated.Text>
             )}
           </View>
 
@@ -313,9 +373,9 @@ export default function GameScreen() {
               </Text>
             )}
             {(isLive || isFinished) && game.home_score != null && (
-              <Text style={[styles.score, homeWins && styles.scoreWinner]}>
+              <Animated.Text style={[styles.score, homeWins && styles.scoreWinner, { transform: [{ scale: homePulse }] }]}>
                 {game.home_score}
-              </Text>
+              </Animated.Text>
             )}
           </View>
         </View>
@@ -586,6 +646,24 @@ function createStyles(colors: Palette) {
       borderRadius: radius.lg,
       padding: spacing.lg,
       marginBottom: spacing.md,
+      position: "relative",
+      overflow: "hidden",
+    },
+    goalBanner: {
+      position: "absolute",
+      top: 0,
+      left: 0,
+      right: 0,
+      alignItems: "center",
+      paddingVertical: 6,
+      backgroundColor: "#16a34a",
+      zIndex: 2,
+    },
+    goalBannerText: {
+      fontSize: 12,
+      fontWeight: "800",
+      color: "#fff",
+      letterSpacing: 0.3,
     },
     teamBlock: { flex: 1, alignItems: "center", gap: 3 },
     teamBlockWinner: {},

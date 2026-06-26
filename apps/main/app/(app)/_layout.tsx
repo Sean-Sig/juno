@@ -12,7 +12,6 @@ import {
 } from "react-native";
 import { useSport, ALL_SPORTS, type Sport } from "@juno/api";
 import { useTheme, spacing, radius, typography, type Palette } from "@juno/ui";
-import { FollowedPlayersProvider } from "../../context/FollowedPlayersContext";
 import { ScoutCreditsProvider, useScoutCredits } from "../../context/ScoutCreditsContext";
 import { ScoutLineupProvider } from "../../context/ScoutLineupContext";
 import { CreditSheet } from "../../components/CreditSheet";
@@ -173,7 +172,6 @@ export default function AppLayout() {
   const { colors } = useTheme();
 
   return (
-    <FollowedPlayersProvider>
     <ScoutLineupProvider>
     <ScoutCreditsProvider>
     <CreditSheet />
@@ -188,8 +186,6 @@ export default function AppLayout() {
         headerTitleStyle: { ...(typography.h3 as object) },
         headerLeft: () => <SportSwitcherButton />,
         headerLeftContainerStyle: { paddingLeft: spacing.sm },
-        headerRight: () => <CoinChip />,
-        headerRightContainerStyle: { paddingRight: spacing.sm },
       }}
     >
       {/* Hidden redirect — keeps the route alive for deep links */}
@@ -244,11 +240,12 @@ export default function AppLayout() {
         }}
       />
 
-      {/* Tab 2 — Scout */}
+      {/* Tab 2 — Scout (hidden until launch) */}
       <Tabs.Screen
         name="scout"
         options={{
           title: "Scout",
+          href: null,
           tabBarIcon: ({ color, size }) => <Ionicons name="sparkles" color={color} size={size} />,
         }}
       />
@@ -271,15 +268,12 @@ export default function AppLayout() {
         }}
       />
       <Tabs.Screen name="player/[id]" options={{ href: null, title: "Player" }} />
-      <Tabs.Screen name="match/[id]" options={{ href: null, title: "Match" }} />
       <Tabs.Screen name="match/h2h/[id]" options={{ href: null, title: "Head to Head" }} />
       <Tabs.Screen name="game/[id]" options={{ href: null, title: "Game" }} />
-      <Tabs.Screen name="scorecard" options={{ href: null, title: "Scorecard" }} />
       <Tabs.Screen name="sport-settings" options={{ href: null, title: "Followed Sports" }} />
     </Tabs>
     </ScoutCreditsProvider>
     </ScoutLineupProvider>
-    </FollowedPlayersProvider>
   );
 }
 

@@ -162,13 +162,37 @@ function GolfTournamentDetail({ id }: { id: string }) {
             {scores.map((score) => {
               const hasData = hasRoundData(score) || score.par !== 0 || score.strokes > 0;
               const badge = score.dq ? "DQ" : score.wd ? "WD" : !score.made_cut ? "MC" : null;
+              const firstName = score.player?.display_first_name ?? score.player?.first_name ?? "";
+              const lastName = score.player?.display_last_name ?? score.player?.last_name ?? "";
               return (
-                <View key={score.id} style={styles.scoreRow}>
+                <TouchableOpacity
+                  key={score.id}
+                  style={styles.scoreRow}
+                  activeOpacity={0.7}
+                  onPress={() => {
+                    router.push({
+                      pathname: "/scorecard",
+                      params: {
+                        playerId: score.player_id ?? score.player?.id ?? "",
+                        playerName: `${firstName} ${lastName}`.trim(),
+                        country: score.player?.country ?? "",
+                        photo: score.player?.photo ?? "",
+                        ranking: String(score.player?.world_rankings_rank ?? score.player?.rolex_world_rankings_rank ?? ""),
+                        tournamentName: tournament?.name ?? entry.name ?? "",
+                        mostRecentRound: event?.most_recently_scored_round ?? "",
+                        details: JSON.stringify(score.details ?? {}),
+                        totalPar: score.par,
+                        totalStrokes: score.strokes,
+                        displayPlace: score.display_place ?? "",
+                        courses: JSON.stringify(tournament?.courses ?? []),
+                      },
+                    });
+                  }}
+                >
                   <Text style={styles.place}>{score.display_place ?? "—"}</Text>
                   <View style={styles.playerInfo}>
                     <Text style={styles.playerName}>
-                      {score.player?.display_first_name ?? score.player?.first_name}{" "}
-                      {score.player?.display_last_name ?? score.player?.last_name}
+                      {firstName} {lastName}
                     </Text>
                     {score.player?.country && (
                       <Text style={styles.country}>{score.player.country}</Text>
@@ -181,7 +205,8 @@ function GolfTournamentDetail({ id }: { id: string }) {
                       {score.par === 0 ? "E" : score.par > 0 ? `+${score.par}` : score.par}
                     </Text>
                   ) : null}
-                </View>
+                  <Ionicons name="chevron-forward" size={16} color={colors.textSecondary} style={{ marginLeft: spacing.xs }} />
+                </TouchableOpacity>
               );
             })}
           </View>

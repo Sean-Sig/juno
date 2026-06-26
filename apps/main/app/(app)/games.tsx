@@ -10,6 +10,7 @@ import {
   StyleSheet,
   TouchableOpacity,
   RefreshControl,
+  Animated,
 } from "react-native";
 import { Image } from "expo-image";
 import { SafeAreaView } from "react-native-safe-area-context";
@@ -127,6 +128,8 @@ function GameCardShell({
   children,
   awayFlag,
   homeFlag,
+  periodTimeSuffix,
+  goalAnimation,
 }: {
   game: SharedGame;
   isLive: boolean;
@@ -136,6 +139,8 @@ function GameCardShell({
   children?: React.ReactNode;
   awayFlag?: string | null;
   homeFlag?: string | null;
+  periodTimeSuffix?: string;
+  goalAnimation?: boolean;
 }) {
   const { colors } = useTheme();
   const styles = useMemo(() => createStyles(colors), [colors]);
@@ -143,19 +148,75 @@ function GameCardShell({
   const awayWins = isFinished && (game.away_score ?? 0) > (game.home_score ?? 0);
   const homeWins = isFinished && (game.home_score ?? 0) > (game.away_score ?? 0);
 
+  // Goal-flash animation — pop the scorer's number and flash a "GOAL" banner
+  // whenever a live score ticks up (driven by the soccer_delta websocket push).
+  const prevScores = useRef({ away: game.away_score, home: game.home_score });
+  const [goalTeam, setGoalTeam] = useState<"home" | "away" | null>(null);
+  const awayPulse = useRef(new Animated.Value(1)).current;
+  const homePulse = useRef(new Animated.Value(1)).current;
+  const bannerAnim = useRef(new Animated.Value(0)).current;
+
+  useEffect(() => {
+    const prev = prevScores.current;
+    prevScores.current = { away: game.away_score, home: game.home_score };
+    if (!goalAnimation) return;
+
+    const scored: "home" | "away" | null =
+      isLive && game.away_score != null && prev.away != null && game.away_score > prev.away
+        ? "away"
+        : isLive && game.home_score != null && prev.home != null && game.home_score > prev.home
+          ? "home"
+          : null;
+    if (!scored) return;
+
+    setGoalTeam(scored);
+    const pulse = scored === "away" ? awayPulse : homePulse;
+    Animated.sequence([
+      Animated.spring(pulse, { toValue: 1.5, friction: 3, useNativeDriver: true }),
+      Animated.spring(pulse, { toValue: 1, friction: 4, useNativeDriver: true }),
+    ]).start();
+
+    bannerAnim.setValue(0);
+    Animated.sequence([
+      Animated.spring(bannerAnim, { toValue: 1, friction: 5, useNativeDriver: true }),
+      Animated.delay(1400),
+      Animated.timing(bannerAnim, { toValue: 0, duration: 250, useNativeDriver: true }),
+    ]).start(() => setGoalTeam(null));
+  }, [game.away_score, game.home_score, isLive, goalAnimation]);
+
   return (
     <TouchableOpacity
       style={[styles.card, isLive && styles.cardLive]}
       onPress={onPress}
       activeOpacity={0.75}
     >
+      {/* ── Goal banner — flashes over the card on a score change ── */}
+      {goalTeam && (
+        <Animated.View
+          style={[
+            styles.goalBanner,
+            {
+              opacity: bannerAnim,
+              transform: [
+                { translateY: bannerAnim.interpolate({ inputRange: [0, 1], outputRange: [-8, 0] }) },
+                { scale: bannerAnim.interpolate({ inputRange: [0, 1], outputRange: [0.85, 1] }) },
+              ],
+            },
+          ]}
+        >
+          <Text style={styles.goalBannerText}>
+            ⚽ GOAL — {goalTeam === "away" ? (game.away_team?.name ?? "Away") : (game.home_team?.name ?? "Home")}
+          </Text>
+        </Animated.View>
+      )}
+
       {/* ── Live capsule — absolute top-left corner ── */}
       {isLive && (
         <View style={styles.liveCapsule}>
           <View style={styles.liveDot} />
           <Text style={styles.liveCapsuleText}>
             {statusLabel ?? "LIVE"}
-            {game.period_time ? `  ·  ${game.period_time}` : ""}
+            {game.period_time ? `  ·  ${game.period_time}${periodTimeSuffix ?? ""}` : ""}
           </Text>
         </View>
       )}
@@ -189,6 +250,7 @@ function GameCardShell({
           showScore={isLive || isFinished}
           winner={awayWins}
           loser={homeWins}   /* home won → away lost */
+          pulse={awayPulse}
         />
         <TeamScoreRow
           abbrev={game.home_team?.abbreviation ?? null}
@@ -200,6 +262,7 @@ function GameCardShell({
           showScore={isLive || isFinished}
           winner={homeWins}
           loser={awayWins}   /* away won → home lost */
+          pulse={homePulse}
         />
       </View>
 
@@ -219,6 +282,7 @@ function TeamScoreRow({
   showScore,
   winner,
   loser,
+  pulse,
 }: {
   abbrev: string | null;
   logo?: string | null;
@@ -229,6 +293,7 @@ function TeamScoreRow({
   showScore: boolean;
   winner: boolean;
   loser: boolean;
+  pulse?: Animated.Value;
 }) {
   const { colors } = useTheme();
   const styles = useMemo(() => createStyles(colors), [colors]);
@@ -255,9 +320,16 @@ function TeamScoreRow({
         ) : null}
       </View>
       {showScore && score != null ? (
-        <Text style={[styles.teamScore, winner && styles.teamScoreWinner, loser && styles.teamScoreMuted]}>
+        <Animated.Text
+          style={[
+            styles.teamScore,
+            winner && styles.teamScoreWinner,
+            loser && styles.teamScoreMuted,
+            pulse ? { transform: [{ scale: pulse }] } : null,
+          ]}
+        >
           {score}
-        </Text>
+        </Animated.Text>
       ) : !showScore ? (
         <View style={styles.teamScorePlaceholder} />
       ) : null}
@@ -339,6 +411,15 @@ function BasketballGamesView() {
     if (tab !== "live") return;
     setLoading(true);
 
+    // REST fallback so the spinner always clears even if the socket never
+    // delivers `basketball_state` — the channel still drives real-time
+    // updates once/if it connects (see soccer's identical fix above).
+    const refetch = () =>
+      basketball.getGames({ status: "live" })
+        .then(({ data }) => setGames(data))
+        .catch(() => {});
+    refetch().finally(() => setLoading(false));
+
     const channel = joinBasketballGamesChannel({
       onState: (incoming) => {
         setGames(incoming);
@@ -353,8 +434,13 @@ function BasketballGamesView() {
       },
     });
 
+    // `basketball_delta` isn't guaranteed to fire promptly for every score
+    // change, so poll REST as a safety net (same fix as soccer/golf).
+    const pollId = setInterval(refetch, 30_000);
+
     return () => {
       channel.leave();
+      clearInterval(pollId);
     };
   }, [tab]);
 
@@ -918,6 +1004,8 @@ function SoccerGameCard({ game, onPress }: { game: SoccerGame; onPress: () => vo
       onPress={onPress}
       awayFlag={countryFlag(game.away_team?.name)}
       homeFlag={countryFlag(game.home_team?.name)}
+      periodTimeSuffix="'"
+      goalAnimation
     />
   );
 }
@@ -994,12 +1082,25 @@ function SoccerGamesView() {
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [query, setQuery] = useState("");
+  const [liveConnectionFailed, setLiveConnectionFailed] = useState(false);
+  const [liveRetryToken, setLiveRetryToken] = useState(0);
   const initialAutoSwitch = useRef(true);
 
   // Live tab: subscribe to WebSocket channel for real-time score updates.
   useEffect(() => {
     if (tab !== "live") return;
     setLoading(true);
+    setLiveConnectionFailed(false);
+
+    // REST fallback so the spinner always clears even if the socket never
+    // delivers `soccer_state` (mirrors matches.tsx's tennis pattern, where
+    // `loading` is gated by a REST call, not the channel). The channel below
+    // still drives real-time updates once/if it connects.
+    const refetch = () =>
+      soccer.getGames({ status: "live" })
+        .then(({ data }) => setGames(data))
+        .catch(() => {});
+    refetch().finally(() => setLoading(false));
 
     const channel = joinSoccerGamesChannel({
       onState: (incoming) => {
@@ -1013,12 +1114,22 @@ function SoccerGamesView() {
           return Array.from(map.values());
         });
       },
+      onError: () => {
+        setLoading(false);
+        setLiveConnectionFailed(true);
+      },
     });
+
+    // `soccer_delta` isn't guaranteed to fire promptly (or at all) for every
+    // score change, so poll REST as a safety net — same fix as golf's
+    // tournament list — to keep scores from going stale indefinitely.
+    const pollId = setInterval(refetch, 30_000);
 
     return () => {
       channel.leave();
+      clearInterval(pollId);
     };
-  }, [tab]);
+  }, [tab, liveRetryToken]);
 
   // Upcoming / Final tabs: REST API.
   const load = useCallback(async (filter: FilterTab, league: SoccerLeague) => {
@@ -1046,7 +1157,10 @@ function SoccerGamesView() {
   }, [loading, games.length, tab]);
 
   function onRefresh() {
-    if (tab === "live") return; // socket pushes updates automatically
+    if (tab === "live") {
+      if (liveConnectionFailed) setLiveRetryToken((n) => n + 1);
+      return;
+    }
     setRefreshing(true);
     load(tab, leagueFilter).finally(() => setRefreshing(false));
   }
@@ -1149,7 +1263,21 @@ function SoccerGamesView() {
           <ActivityIndicator color={colors.primary} />
         </View>
       ) : tab === "live" ? (
-        liveGames.length === 0 ? (
+        // Only show the hard error if we truly have nothing to display —
+        // a REST-loaded game list should win over a separately-failed socket.
+        liveConnectionFailed && liveGames.length === 0 ? (
+          <View style={styles.emptyWrap}>
+            <Text style={styles.emptyTitle}>Can't connect</Text>
+            <Text style={styles.emptyText}>Couldn't reach live scores. Check your connection and try again.</Text>
+            <TouchableOpacity
+              style={styles.retryButton}
+              onPress={() => setLiveRetryToken((n) => n + 1)}
+              activeOpacity={0.7}
+            >
+              <Text style={styles.retryButtonText}>Retry</Text>
+            </TouchableOpacity>
+          </View>
+        ) : liveGames.length === 0 ? (
           <View style={styles.emptyWrap}>
             <Text style={styles.emptyTitle}>{emptyTitle}</Text>
             <Text style={styles.emptyText}>{emptyMessage}</Text>
@@ -1343,6 +1471,14 @@ function createStyles(colors: Palette) {
     emptyWrap: { flex: 1, alignItems: "center", justifyContent: "center", paddingTop: 80 },
     emptyTitle: { ...typography.h3, color: colors.text, marginBottom: spacing.xs },
     emptyText: { ...typography.body, color: colors.textSecondary, textAlign: "center" },
+    retryButton: {
+      marginTop: spacing.md,
+      paddingHorizontal: spacing.lg,
+      paddingVertical: spacing.sm,
+      borderRadius: radius.full,
+      backgroundColor: colors.primary,
+    },
+    retryButtonText: { ...typography.label, color: colors.textOnPrimary ?? "#fff", fontWeight: "700" },
 
     // ── Card shell ──
     card: {
@@ -1387,6 +1523,24 @@ function createStyles(colors: Palette) {
       fontWeight: "700",
       color: "#fff",
       letterSpacing: 0.4,
+    },
+
+    // ── Goal banner (absolute, centered top) ──
+    goalBanner: {
+      position: "absolute",
+      top: 0,
+      left: 0,
+      right: 0,
+      alignItems: "center",
+      paddingVertical: 6,
+      backgroundColor: "#16a34a",
+      zIndex: 2,
+    },
+    goalBannerText: {
+      fontSize: 12,
+      fontWeight: "800",
+      color: "#fff",
+      letterSpacing: 0.3,
     },
     teamsContainerLive: {
       marginTop: spacing.lg + 4, // push teams below the capsule

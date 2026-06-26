@@ -302,6 +302,7 @@ export default function PlayerScreen() {
             </TouchableOpacity>
           )}
 
+          {/* Add to Scout — hidden until launch
           {activeSport === "tennis" && player && (
             <TouchableOpacity
               style={[styles.scoutButton, { borderColor: colors.primary }]}
@@ -315,6 +316,7 @@ export default function PlayerScreen() {
               <Text style={[styles.scoutButtonText, { color: colors.primary }]}>Add to Scout</Text>
             </TouchableOpacity>
           )}
+          */}
         </View>
 
         {stats.length > 0 && (

@@ -5,6 +5,7 @@ import type { SoccerGame } from "./types";
 export function joinSoccerGamesChannel(handlers: {
   onState: (games: SoccerGame[]) => void;
   onDelta: (games: SoccerGame[]) => void;
+  onError?: (reason: "error" | "timeout") => void;
 }): Channel {
   const socket = getSocket();
   const channel = socket.channel("sport:soccer:games", {});
@@ -17,6 +18,9 @@ export function joinSoccerGamesChannel(handlers: {
     handlers.onDelta(games);
   });
 
-  channel.join();
+  channel.join()
+    .receive("error", () => handlers.onError?.("error"))
+    .receive("timeout", () => handlers.onError?.("timeout"));
+
   return channel;
 }

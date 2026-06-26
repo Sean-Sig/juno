@@ -128,7 +128,7 @@ export default function GameScreen() {
               <View style={styles.liveDot} />
               <Text style={styles.liveText}>
                 {periodLabel(game, activeSport)}
-                {game.period_time ? ` · ${game.period_time}` : ""}
+                {game.period_time ? ` · ${game.period_time}${activeSport === "soccer" ? "'" : ""}` : ""}
               </Text>
             </View>
           ) : isFinished ? (

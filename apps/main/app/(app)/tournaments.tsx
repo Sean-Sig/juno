@@ -3,19 +3,12 @@ import {
   View,
   Text,
   FlatList,
-  ScrollView,
   TextInput,
   ActivityIndicator,
   RefreshControl,
   StyleSheet,
   TouchableOpacity,
-  Modal,
-  Animated,
-  Dimensions,
-  Platform,
-  PanResponder,
 } from "react-native";
-import { Image } from "expo-image";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { useRouter } from "expo-router";
 import {
@@ -27,7 +20,6 @@ import {
   joinGolfChannel,
 } from "@juno/api";
 import { useTheme, spacing, radius, typography, type Palette } from "@juno/ui";
-import { useFollowedPlayers } from "../../context/FollowedPlayersContext";
 
 const TEAM_ID = process.env.EXPO_PUBLIC_GOLF_TEAM_ID ?? "00000000-0000-0000-0000-000000000001";
 
@@ -86,7 +78,6 @@ export default function TournamentsScreen() {
   const [selected, setSelected] = useState<GolfTournament | null>(null);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
-  const [sheetScore, setSheetScore] = useState<GolfScore | null>(null);
   const channelRef = useRef<ReturnType<typeof joinGolfChannel> | null>(null);
 
   const loadTournaments = useCallback(() => {
@@ -408,14 +399,17 @@ export default function TournamentsScreen() {
                     mostRecentRound={mostRecentRound}
                     showToday={showToday}
                     coursePar={coursePar}
-                    onPlayerPress={() => setSheetScore(item)}
                     onScorecard={() => {
                       const firstName = item.player?.display_first_name ?? item.player?.first_name ?? "";
                       const lastName = item.player?.display_last_name ?? item.player?.last_name ?? "";
                       router.push({
-                        pathname: "/(app)/scorecard",
+                        pathname: "/scorecard",
                         params: {
+                          playerId: item.player_id ?? item.player?.id ?? "",
                           playerName: `${firstName} ${lastName}`.trim(),
+                          country: item.player?.country ?? "",
+                          photo: item.player?.photo ?? "",
+                          ranking: String(item.player?.world_rankings_rank ?? item.player?.rolex_world_rankings_rank ?? ""),
                           tournamentName: selected?.name ?? "",
                           mostRecentRound: selected?.events?.[0]?.most_recently_scored_round ?? "",
                           details: JSON.stringify(item.details ?? {}),
@@ -482,14 +476,6 @@ export default function TournamentsScreen() {
           }
         />
       )}
-
-      {/* Player detail sheet */}
-      <PlayerSheet
-        score={sheetScore}
-        tournamentName={selected?.name ?? null}
-        coursePar={coursePar}
-        onClose={() => setSheetScore(null)}
-      />
     </SafeAreaView>
   );
 }
@@ -569,14 +555,12 @@ function LeaderboardRow({
   mostRecentRound,
   showToday,
   coursePar,
-  onPlayerPress,
   onScorecard,
 }: {
   score: GolfScore;
   mostRecentRound: string | null;
   showToday: boolean;
   coursePar: number | null;
-  onPlayerPress: () => void;
   onScorecard: () => void;
 }) {
   const { colors } = useTheme();
@@ -598,13 +582,13 @@ function LeaderboardRow({
   return (
     <TouchableOpacity style={styles.row} onPress={onScorecard} activeOpacity={0.7}>
       <Text style={styles.place}>{score.display_place ?? "—"}</Text>
-      <TouchableOpacity style={styles.playerInfo} onPress={onPlayerPress} activeOpacity={0.6}>
+      <View style={styles.playerInfo}>
         <Text style={styles.playerName}>
           {score.player?.display_first_name ?? score.player?.first_name}{" "}
           {score.player?.display_last_name ?? score.player?.last_name}
         </Text>
         <Text style={styles.country}>{score.player?.country}</Text>
-      </TouchableOpacity>
+      </View>
       <View style={styles.scoreRight}>
         {terminalBadge ? (
           <Text style={[styles.badge, { width: showToday ? 68 + 52 + 8 : 52, textAlign: "right" }]}>{terminalBadge}</Text>
@@ -637,310 +621,8 @@ function LeaderboardRow({
             </View>
           </>
         )}
-        <Text style={styles.expandCaret}>›</Text>
       </View>
     </TouchableOpacity>
-  );
-}
-
-// ---------------------------------------------------------------------------
-// Player detail sheet
-// ---------------------------------------------------------------------------
-
-const SCREEN_HEIGHT = Dimensions.get("window").height;
-const SHEET_HEIGHT = Math.min(SCREEN_HEIGHT * 0.65, 520);
-
-function PlayerSheet({
-  score,
-  tournamentName,
-  coursePar,
-  onClose,
-}: {
-  score: GolfScore | null;
-  tournamentName: string | null;
-  coursePar: number | null;
-  onClose: () => void;
-}) {
-  const { colors } = useTheme();
-  const { isFollowed, follow, unfollow } = useFollowedPlayers();
-  const slideAnim = useRef(new Animated.Value(SHEET_HEIGHT)).current;
-  const [followLoading, setFollowLoading] = useState(false);
-  const visible = score !== null;
-
-  // Keep onClose in a ref so PanResponder closure doesn't go stale
-  const onCloseRef = useRef(onClose);
-  useEffect(() => { onCloseRef.current = onClose; }, [onClose]);
-
-  // Slide in when score appears, reset when cleared
-  useEffect(() => {
-    if (visible) {
-      Animated.spring(slideAnim, {
-        toValue: 0,
-        useNativeDriver: true,
-        damping: 20,
-        stiffness: 200,
-      }).start();
-    } else {
-      slideAnim.setValue(SHEET_HEIGHT);
-    }
-  }, [visible]);
-
-  const dismiss = useCallback(() => {
-    Animated.timing(slideAnim, {
-      toValue: SHEET_HEIGHT,
-      duration: 220,
-      useNativeDriver: true,
-    }).start(() => onCloseRef.current());
-  }, []);
-
-  // Pan responder — drag handle area only
-  const panResponder = useRef(
-    PanResponder.create({
-      onStartShouldSetPanResponder: () => true,
-      onMoveShouldSetPanResponder: (_, { dy }) => dy > 4,
-      onPanResponderMove: (_, { dy }) => {
-        // Only allow downward drag
-        if (dy > 0) slideAnim.setValue(dy);
-      },
-      onPanResponderRelease: (_, { dy, vy }) => {
-        if (dy > 80 || vy > 0.5) {
-          // Flicked or dragged far enough — dismiss
-          Animated.timing(slideAnim, {
-            toValue: SHEET_HEIGHT,
-            duration: 200,
-            useNativeDriver: true,
-          }).start(() => onCloseRef.current());
-        } else {
-          // Snap back
-          Animated.spring(slideAnim, {
-            toValue: 0,
-            useNativeDriver: true,
-            damping: 20,
-            stiffness: 200,
-          }).start();
-        }
-      },
-    })
-  ).current;
-
-  if (!score) return null;
-
-  const player = score.player;
-  const playerId = score.player_id ?? player?.id ?? "";
-  const followed = playerId ? isFollowed(playerId) : false;
-
-  const firstName = player?.display_first_name ?? player?.first_name ?? "";
-  const lastName = player?.display_last_name ?? player?.last_name ?? "";
-  const fullName = `${firstName} ${lastName}`.trim();
-  const initials = `${firstName.charAt(0)}${lastName.charAt(0)}`.toUpperCase();
-
-  const roundBreakdown = ROUND_ORDER
-    .map((key) => {
-      const d = score.details?.[key] as GolfRoundDetail | undefined;
-      if (!detailHasData(d)) return null;
-      const par = roundParFromDetail(d!, coursePar);
-      return { key, label: key.replace("round_", "R"), par, thru: d!.thru };
-    })
-    .filter((r): r is { key: string; label: string; par: number | null; thru: string | null } => r !== null);
-
-  const ranking = player?.world_rankings_rank ?? (player as any)?.rolex_world_rankings_rank ?? null;
-
-  const handleFollow = async () => {
-    if (!playerId || followLoading) return;
-    setFollowLoading(true);
-    try {
-      if (followed) await unfollow(playerId);
-      else await follow(playerId);
-    } finally {
-      setFollowLoading(false);
-    }
-  };
-
-  return (
-    <Modal visible={visible} transparent animationType="none" onRequestClose={dismiss}>
-      {/* Backdrop */}
-      <TouchableOpacity
-        style={{ flex: 1, backgroundColor: "rgba(0,0,0,0.45)" }}
-        activeOpacity={1}
-        onPress={dismiss}
-      />
-
-      {/* Sheet */}
-      <Animated.View
-        style={{
-          position: "absolute",
-          bottom: 0,
-          left: 0,
-          right: 0,
-          height: SHEET_HEIGHT,
-          backgroundColor: colors.surface ?? colors.background,
-          borderTopLeftRadius: 20,
-          borderTopRightRadius: 20,
-          transform: [{ translateY: slideAnim }],
-          paddingBottom: Platform.OS === "ios" ? 34 : 16,
-        }}
-      >
-        {/* Drag handle — this View owns the pan responder */}
-        <View
-          {...panResponder.panHandlers}
-          style={{ alignItems: "center", paddingTop: 12, paddingBottom: 8 }}
-        >
-          <View style={{ width: 36, height: 4, borderRadius: 2, backgroundColor: colors.border }} />
-        </View>
-
-        <ScrollView
-          contentContainerStyle={{ paddingHorizontal: 24, paddingTop: 8, paddingBottom: 16 }}
-          showsVerticalScrollIndicator={false}
-          scrollEventThrottle={16}
-        >
-          {/* Player header row */}
-          <View style={{ flexDirection: "row", alignItems: "center", marginBottom: 18 }}>
-            {/* Avatar */}
-            <View style={{ marginRight: 14 }}>
-              {player?.photo ? (
-                <Image
-                  source={{ uri: player.photo }}
-                  style={{ width: 64, height: 64, borderRadius: 32, backgroundColor: colors.border }}
-                  cachePolicy="memory-disk"
-                />
-              ) : (
-                <View style={{
-                  width: 64, height: 64, borderRadius: 32,
-                  backgroundColor: colors.primary + "22",
-                  alignItems: "center", justifyContent: "center",
-                }}>
-                  <Text style={{ fontSize: 22, fontWeight: "700", color: colors.primary }}>{initials || "?"}</Text>
-                </View>
-              )}
-            </View>
-
-            {/* Name + meta */}
-            <View style={{ flex: 1 }}>
-              <Text style={{ fontSize: 20, fontWeight: "700", color: colors.text, marginBottom: 3 }}>
-                {fullName || "Unknown Player"}
-              </Text>
-              <View style={{ flexDirection: "row", alignItems: "center", gap: 8 }}>
-                {player?.country ? (
-                  <Text style={{ fontSize: 13, color: colors.textSecondary }}>{player.country}</Text>
-                ) : null}
-                {ranking != null ? (
-                  <View style={{
-                    backgroundColor: colors.primary + "18",
-                    borderRadius: 4, paddingHorizontal: 6, paddingVertical: 2,
-                  }}>
-                    <Text style={{ fontSize: 11, fontWeight: "700", color: colors.primary }}>WR #{ranking}</Text>
-                  </View>
-                ) : null}
-              </View>
-            </View>
-
-            {/* Follow button */}
-            {playerId ? (
-              <TouchableOpacity
-                onPress={handleFollow}
-                disabled={followLoading}
-                activeOpacity={0.75}
-                style={{
-                  paddingHorizontal: 16,
-                  paddingVertical: 8,
-                  borderRadius: 20,
-                  backgroundColor: followed ? colors.primary : "transparent",
-                  borderWidth: 1.5,
-                  borderColor: colors.primary,
-                  opacity: followLoading ? 0.5 : 1,
-                }}
-              >
-                <Text style={{
-                  fontSize: 13,
-                  fontWeight: "700",
-                  color: followed ? (colors.background) : colors.primary,
-                }}>
-                  {followed ? "Following" : "Follow"}
-                </Text>
-              </TouchableOpacity>
-            ) : null}
-          </View>
-
-          {/* Divider */}
-          <View style={{ height: StyleSheet.hairlineWidth, backgroundColor: colors.border, marginBottom: 18 }} />
-
-          {/* Tournament label */}
-          {tournamentName ? (
-            <Text style={{ fontSize: 11, fontWeight: "700", color: colors.textSecondary, letterSpacing: 0.8, marginBottom: 12 }}>
-              {tournamentName.toUpperCase()}
-            </Text>
-          ) : null}
-
-          {/* Stat cards: position / total / strokes */}
-          <View style={{ flexDirection: "row", gap: 10, marginBottom: 20 }}>
-            <View style={{
-              flex: 1, backgroundColor: colors.background,
-              borderRadius: 10, padding: 14, alignItems: "center",
-              borderWidth: StyleSheet.hairlineWidth, borderColor: colors.border,
-            }}>
-              <Text style={{ fontSize: 11, fontWeight: "700", color: colors.textSecondary, marginBottom: 4 }}>POSITION</Text>
-              <Text style={{ fontSize: 24, fontWeight: "800", color: colors.text }}>{score.display_place ?? "—"}</Text>
-            </View>
-            <View style={{
-              flex: 1, backgroundColor: colors.background,
-              borderRadius: 10, padding: 14, alignItems: "center",
-              borderWidth: StyleSheet.hairlineWidth, borderColor: colors.border,
-            }}>
-              <Text style={{ fontSize: 11, fontWeight: "700", color: colors.textSecondary, marginBottom: 4 }}>TOTAL</Text>
-              <Text style={[
-                { fontSize: 24, fontWeight: "800" },
-                score.par < 0 ? { color: colors.primary }
-                  : score.par > 0 ? { color: colors.error ?? "#ef4444" }
-                  : { color: colors.text },
-              ]}>
-                {formatScore(score.par)}
-              </Text>
-            </View>
-            {score.strokes > 0 && (
-              <View style={{
-                flex: 1, backgroundColor: colors.background,
-                borderRadius: 10, padding: 14, alignItems: "center",
-                borderWidth: StyleSheet.hairlineWidth, borderColor: colors.border,
-              }}>
-                <Text style={{ fontSize: 11, fontWeight: "700", color: colors.textSecondary, marginBottom: 4 }}>STROKES</Text>
-                <Text style={{ fontSize: 24, fontWeight: "800", color: colors.text }}>{score.strokes}</Text>
-              </View>
-            )}
-          </View>
-
-          {/* Round breakdown */}
-          {roundBreakdown.length > 0 && (
-            <>
-              <Text style={{ fontSize: 11, fontWeight: "700", color: colors.textSecondary, letterSpacing: 0.8, marginBottom: 10 }}>ROUNDS</Text>
-              <View style={{ flexDirection: "row", gap: 8 }}>
-                {roundBreakdown.map((r) => (
-                  <View key={r.key} style={{
-                    flex: 1, backgroundColor: colors.background,
-                    borderRadius: 10, padding: 12, alignItems: "center",
-                    borderWidth: StyleSheet.hairlineWidth, borderColor: colors.border,
-                  }}>
-                    <Text style={{ fontSize: 11, fontWeight: "700", color: colors.textSecondary, marginBottom: 4 }}>{r.label}</Text>
-                    <Text style={[
-                      { fontSize: 18, fontWeight: "800" },
-                      r.par != null && r.par < 0 ? { color: colors.primary }
-                        : r.par != null && r.par > 0 ? { color: colors.error ?? "#ef4444" }
-                        : { color: colors.text },
-                    ]}>
-                      {r.par != null ? formatScore(r.par) : "—"}
-                    </Text>
-                    {r.thru ? (
-                      <Text style={{ fontSize: 10, color: colors.textSecondary, marginTop: 2 }}>
-                        {r.thru === "F" ? "Final" : `Thru ${r.thru}`}
-                      </Text>
-                    ) : null}
-                  </View>
-                ))}
-              </View>
-            </>
-          )}
-        </ScrollView>
-      </Animated.View>
-    </Modal>
   );
 }
 
@@ -1068,7 +750,6 @@ function createStyles(colors: Palette) {
     over: { color: colors.error ?? "#ef4444" },
     badge: { ...typography.caption, color: colors.textSecondary, fontWeight: "700" },
     chevron: { ...typography.h2, color: colors.textSecondary, lineHeight: 24 },
-    expandCaret: { ...typography.body, color: colors.textSecondary, marginLeft: 4 },
     separator: { height: 1, backgroundColor: colors.border },
 
     // Tournament card (upcoming / final)
