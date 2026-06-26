@@ -37,6 +37,7 @@ export const basketball = {
       league?: string;
       team_id?: string;
       q?: string;
+      position?: string;
       sort?: BasketballPlayersSort;
       order?: "asc" | "desc";
       season?: number;

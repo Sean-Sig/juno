@@ -20,7 +20,7 @@ export const football = {
     return apiFetch<{ data: FootballTeam }>(`/api/v4/football/teams/${id}`);
   },
 
-  getPlayers(params?: { league?: string; team_id?: string; q?: string } & PageParams) {
+  getPlayers(params?: { league?: string; team_id?: string; q?: string; position?: string } & PageParams) {
     return apiFetch<{ data: FootballPlayer[] }>(`/api/v4/football/players${buildQuery(params)}`);
   },
 

@@ -20,7 +20,7 @@ export const hockey = {
     return apiFetch<{ data: HockeyTeam }>(`/api/v4/hockey/teams/${id}`);
   },
 
-  getPlayers(params?: { league?: string; team_id?: string; q?: string } & PageParams) {
+  getPlayers(params?: { league?: string; team_id?: string; q?: string; position?: string } & PageParams) {
     return apiFetch<{ data: HockeyPlayer[] }>(`/api/v4/hockey/players${buildQuery(params)}`);
   },
 

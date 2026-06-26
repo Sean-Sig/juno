@@ -54,12 +54,6 @@ const POSITION_SORT_ORDER: Record<string, number> = {
   CB: 8, S: 8, SS: 8, FS: 8, DB: 8,
 };
 
-const OL_POSITIONS = new Set(["T", "G", "C", "OT", "OG", "OL", "LS"]);
-const DL_POSITIONS = new Set(["DE", "DT", "NT", "DL"]);
-const LB_POSITIONS = new Set(["OLB", "ILB", "MLB", "LB"]);
-const DB_POSITIONS = new Set(["CB", "S", "SS", "FS", "DB"]);
-const K_POSITIONS  = new Set(["K", "P", "KP"]);
-
 const PER_PAGE = 50;
 
 // Playoff seeds: top 7 per conference (1 division winner each = seeds 1-4, wild cards = 5-7)
@@ -184,16 +178,6 @@ function getPlayoffSeed(
   const wcIdx = wildcards.findIndex((t) => t.id === team.id);
   if (wcIdx !== -1 && wcIdx < 3) return 5 + wcIdx; // seeds 5–7
   return null;
-}
-
-function matchesPosition(playerPos: string, filter: PositionFilter): boolean {
-  const pos = playerPos.toUpperCase();
-  if (filter === "OL") return OL_POSITIONS.has(pos);
-  if (filter === "DL") return DL_POSITIONS.has(pos);
-  if (filter === "LB") return LB_POSITIONS.has(pos);
-  if (filter === "DB") return DB_POSITIONS.has(pos);
-  if (filter === "K")  return K_POSITIONS.has(pos);
-  return pos === filter || pos.startsWith(filter + "/") || pos.endsWith("/" + filter);
 }
 
 // ---------------------------------------------------------------------------
@@ -481,16 +465,22 @@ function PlayersView({ colors }: { colors: Palette }) {
 
   const [players, setPlayers] = useState<FootballPlayer[]>([]);
   const [query, setQuery] = useState("");
-  const [position, setPosition] = useState<PositionFilter>("QB");
+  const [position, setPosition] = useState<PositionFilter>("all");
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [loadingMore, setLoadingMore] = useState(false);
   const [hasMore, setHasMore] = useState(true);
 
-  const load = useCallback((searchQuery?: string) => {
+  const load = useCallback((searchQuery?: string, positionFilter?: PositionFilter) => {
     setHasMore(true);
     return football
-      .getPlayers({ league: "NFL", q: searchQuery || undefined, page: 1, per_page: PER_PAGE })
+      .getPlayers({
+        league: "NFL",
+        q: searchQuery || undefined,
+        position: positionFilter && positionFilter !== "all" ? positionFilter : undefined,
+        page: 1,
+        per_page: PER_PAGE,
+      })
       .then(({ data }) => {
         setPlayers(data);
         setHasMore(data.length === PER_PAGE);
@@ -499,21 +489,21 @@ function PlayersView({ colors }: { colors: Palette }) {
 
   useEffect(() => {
     setLoading(true);
-    load().finally(() => setLoading(false));
-  }, [load]);
+    load(undefined, position).finally(() => setLoading(false));
+  }, [position]);
 
   useEffect(() => {
-    if (!query.trim()) { load(); return; }
+    if (!query.trim()) { load(undefined, position); return; }
     const timer = setTimeout(() => {
       setLoading(true);
-      load(query.trim()).finally(() => setLoading(false));
+      load(query.trim(), position).finally(() => setLoading(false));
     }, 300);
     return () => clearTimeout(timer);
   }, [query]);
 
   function onRefresh() {
     setRefreshing(true);
-    load(query.trim() || undefined).finally(() => setRefreshing(false));
+    load(query.trim() || undefined, position).finally(() => setRefreshing(false));
   }
 
   function loadMore() {
@@ -521,7 +511,12 @@ function PlayersView({ colors }: { colors: Palette }) {
     setLoadingMore(true);
     const nextPage = Math.floor(players.length / PER_PAGE) + 1;
     football
-      .getPlayers({ league: "NFL", page: nextPage, per_page: PER_PAGE })
+      .getPlayers({
+        league: "NFL",
+        position: position !== "all" ? position : undefined,
+        page: nextPage,
+        per_page: PER_PAGE,
+      })
       .then(({ data }) => {
         setPlayers((prev) => [...prev, ...data]);
         setHasMore(data.length === PER_PAGE);
@@ -535,16 +530,12 @@ function PlayersView({ colors }: { colors: Palette }) {
   }
 
   const displayed = useMemo(() => {
-    const posFiltered = position === "all"
-      ? players
-      : players.filter((p) => matchesPosition(p.position ?? "", position));
-
-    return posFiltered.slice().sort((a, b) => {
+    return players.slice().sort((a, b) => {
       const aOrder = POSITION_SORT_ORDER[a.position?.toUpperCase() ?? ""] ?? 99;
       const bOrder = POSITION_SORT_ORDER[b.position?.toUpperCase() ?? ""] ?? 99;
       return aOrder - bOrder;
     });
-  }, [players, position]);
+  }, [players]);
 
   return (
     <View style={{ flex: 1 }}>

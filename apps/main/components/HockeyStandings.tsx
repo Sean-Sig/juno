@@ -37,19 +37,6 @@ const POSITIONS: { key: PositionFilter; label: string }[] = [
 
 const PER_PAGE = 50;
 
-/** Normalize full position names to abbreviations for filtering. The API only
- * exposes three buckets (forward / defenceman / goaltender) — no center/wing
- * breakdown — so all forward variants collapse to "F". */
-function normalizePosition(pos: string | null | undefined): string {
-  if (!pos) return "";
-  const upper = pos.trim().toUpperCase();
-  if (upper.includes("FORWARD") || upper.includes("WING") || upper.includes("CENTER") || upper.includes("CENTRE")) return "F";
-  if (upper.includes("DEFEN")) return "D";
-  if (upper.includes("GOAL")) return "G";
-  // Return as-is if already abbreviated
-  return upper;
-}
-
 // ---------------------------------------------------------------------------
 // Teams view helpers
 // ---------------------------------------------------------------------------
@@ -212,10 +199,16 @@ function PlayersView({ colors }: { colors: Palette }) {
   const [loadingMore, setLoadingMore] = useState(false);
   const [hasMore, setHasMore] = useState(true);
 
-  const load = useCallback((searchQuery?: string) => {
+  const load = useCallback((searchQuery?: string, positionFilter?: PositionFilter) => {
     setHasMore(true);
     return hockey
-      .getPlayers({ league: "NHL", q: searchQuery || undefined, page: 1, per_page: PER_PAGE })
+      .getPlayers({
+        league: "NHL",
+        q: searchQuery || undefined,
+        position: positionFilter && positionFilter !== "all" ? positionFilter : undefined,
+        page: 1,
+        per_page: PER_PAGE,
+      })
       .then(({ data }) => {
         setPlayers(data);
         setHasMore(data.length === PER_PAGE);
@@ -224,25 +217,25 @@ function PlayersView({ colors }: { colors: Palette }) {
 
   useEffect(() => {
     setLoading(true);
-    load().finally(() => setLoading(false));
-  }, [load]);
+    load(undefined, position).finally(() => setLoading(false));
+  }, [position]);
 
   // Debounced search
   useEffect(() => {
     if (!query.trim()) {
-      load();
+      load(undefined, position);
       return;
     }
     const timer = setTimeout(() => {
       setLoading(true);
-      load(query.trim()).finally(() => setLoading(false));
+      load(query.trim(), position).finally(() => setLoading(false));
     }, 300);
     return () => clearTimeout(timer);
   }, [query]);
 
   function onRefresh() {
     setRefreshing(true);
-    load(query.trim() || undefined).finally(() => setRefreshing(false));
+    load(query.trim() || undefined, position).finally(() => setRefreshing(false));
   }
 
   function loadMore() {
@@ -250,7 +243,12 @@ function PlayersView({ colors }: { colors: Palette }) {
     setLoadingMore(true);
     const nextPage = Math.floor(players.length / PER_PAGE) + 1;
     hockey
-      .getPlayers({ league: "NHL", page: nextPage, per_page: PER_PAGE })
+      .getPlayers({
+        league: "NHL",
+        position: position !== "all" ? position : undefined,
+        page: nextPage,
+        per_page: PER_PAGE,
+      })
       .then(({ data }) => {
         setPlayers((prev) => [...prev, ...data]);
         setHasMore(data.length === PER_PAGE);
@@ -263,10 +261,7 @@ function PlayersView({ colors }: { colors: Palette }) {
     else await follow(playerId);
   }
 
-  const displayed = useMemo(() => {
-    if (position === "all") return players;
-    return players.filter((p) => normalizePosition(p.position) === position);
-  }, [players, position]);
+  const displayed = players;
 
   return (
     <KeyboardAvoidingView
