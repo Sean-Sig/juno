@@ -147,8 +147,8 @@ function PlayerRow({
   colors: Palette;
   styles: ReturnType<typeof createStyles>;
 }) {
-  const firstName = player.display_first_name ?? player.first_name;
-  const lastName = player.display_last_name ?? player.last_name;
+  const firstName = player.first_name;
+  const lastName = player.last_name;
 
   return (
     <View>
@@ -284,8 +284,8 @@ function FollowedSheet({
               keyExtractor={(p) => p.id}
               style={{ maxHeight: 360 }}
               renderItem={({ item: p }) => {
-                const firstName = p.display_first_name ?? p.first_name;
-                const lastName = p.display_last_name ?? p.last_name;
+                const firstName = p.first_name;
+                const lastName = p.last_name;
                 return (
                   <TouchableOpacity
                     style={styles.sheetRow}
@@ -398,7 +398,7 @@ function PlayerSearch({
           {results.slice(0, 6).map((p) => (
             <TouchableOpacity key={p.id} style={styles.dropdownRow} onPress={() => pick(p)}>
               <Text style={[styles.dropdownName, { color: colors.text }]}>
-                {p.display_first_name ?? p.first_name} {p.display_last_name ?? p.last_name}
+                {p.first_name} {p.last_name}
               </Text>
               {p.singles_rank && (
                 <Text style={[typography.caption, { color: colors.textSecondary }]}>

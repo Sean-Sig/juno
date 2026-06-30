@@ -191,6 +191,15 @@ export default function AppLayout() {
       {/* Hidden redirect — keeps the route alive for deep links */}
       <Tabs.Screen name="index" options={{ href: null }} />
 
+      {/* Tab 0 — Home feed */}
+      <Tabs.Screen
+        name="home"
+        options={{
+          title: "Home",
+          tabBarIcon: ({ color, size }) => <Ionicons name="home-outline" color={color} size={size} />,
+        }}
+      />
+
       {/* Tab 1 — sport-specific first tab */}
       <Tabs.Screen
         name="tournaments"

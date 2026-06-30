@@ -15,7 +15,7 @@ export type BasketballPlayersSort =
 
 export const basketball = {
   /** GET /api/v4/basketball/games — filterable by date, date range, league, or status */
-  getGames(params?: { date?: string; date_from?: string; date_to?: string; league?: string; status?: string } & PageParams) {
+  getGames(params?: { date?: string; date_from?: string; date_to?: string; league?: string; status?: string; team_id?: string } & PageParams) {
     return apiFetch<{ data: BasketballGame[] }>(`/api/v4/basketball/games${buildQuery(params)}`);
   },
 
@@ -70,6 +70,26 @@ export const basketball = {
     return apiFetch("/api/v4/basketball/players/unfollow", {
       method: "POST",
       body: { player_id: playerId },
+      token,
+    });
+  },
+
+  getFollowedTeams(token: string) {
+    return apiFetch<{ data: string[] }>("/api/v4/basketball/teams/followed_teams", { token });
+  },
+
+  followTeam(teamId: string, token: string) {
+    return apiFetch("/api/v4/basketball/teams/follow", {
+      method: "POST",
+      body: { team_id: teamId },
+      token,
+    });
+  },
+
+  unfollowTeam(teamId: string, token: string) {
+    return apiFetch("/api/v4/basketball/teams/unfollow", {
+      method: "POST",
+      body: { team_id: teamId },
       token,
     });
   },

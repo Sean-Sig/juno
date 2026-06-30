@@ -101,7 +101,7 @@ export default function RankingsScreen() {
   // When viewing the race tab, sort client-side on the loaded page (server returns singles_rank order)
   const displayed = query.trim()
     ? players.filter((p) => {
-        const name = `${p.display_first_name ?? p.first_name} ${p.display_last_name ?? p.last_name}`.toLowerCase();
+        const name = `${p.first_name} ${p.last_name}`.toLowerCase();
         return name.includes(query.trim().toLowerCase());
       })
     : rankingType.key === "race"
@@ -178,8 +178,8 @@ export default function RankingsScreen() {
           ListFooterComponent={loadingMore ? <ActivityIndicator color={colors.primary} style={styles.footerSpinner} /> : null}
           renderItem={({ item }) => (
             <PlayerCard
-              firstName={item.display_first_name ?? item.first_name}
-              lastName={item.display_last_name ?? item.last_name}
+              firstName={item.first_name}
+              lastName={item.last_name}
               country={item.country}
               photo={item.photo}
               rank={rankingType.rankOf(item)}

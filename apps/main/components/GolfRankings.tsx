@@ -162,8 +162,8 @@ export default function RankingsScreen() {
           ListFooterComponent={loadingMore ? <ActivityIndicator color={colors.primary} style={styles.footerSpinner} /> : null}
           renderItem={({ item }) => (
             <PlayerCard
-              firstName={item.display_first_name ?? item.first_name}
-              lastName={item.display_last_name ?? item.last_name}
+              firstName={item.first_name}
+              lastName={item.last_name}
               country={item.country}
               photo={item.photo}
               rank={rankingType.rankOf(item)}

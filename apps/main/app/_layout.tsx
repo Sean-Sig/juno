@@ -2,10 +2,11 @@ import { Stack, useRouter, useSegments } from "expo-router";
 import { StatusBar } from "expo-status-bar";
 import { View, ActivityIndicator } from "react-native";
 import * as SplashScreen from "expo-splash-screen";
-import React, { useEffect } from "react";
+import React, { useEffect, useRef } from "react";
 import { AuthProvider, useAuth, SportProvider, useSport } from "@juno/api";
 import { ThemeProvider, useTheme, typography } from "@juno/ui";
-import { FollowedPlayersProvider } from "../context/FollowedPlayersContext";
+import { FollowedPlayersProvider, FollowedPlayersAllProvider } from "../context/FollowedPlayersContext";
+import { FollowedTeamsProvider } from "../context/FollowedTeamsContext";
 
 SplashScreen.preventAutoHideAsync();
 
@@ -22,6 +23,7 @@ function RootNavigator() {
   const { colors, mode } = useTheme();
   const segments = useSegments();
   const router = useRouter();
+  const didLandOnHome = useRef(false);
 
   useEffect(() => {
     if (authLoading || sportLoading) return;
@@ -30,22 +32,25 @@ function RootNavigator() {
 
     const inAuth = segments[0] === "(auth)";
     const inOnboarding = segments[0] === "onboarding";
-    const inApp = segments[0] === "(app)";
-    // Root-level detail screens pushed over the tab layout — don't redirect these
-    const inDetailScreen = ["tournament", "player", "game", "match", "scorecard"].includes(segments[0] as string);
+    const inDetailScreen = ["tournament", "match", "scorecard"].includes(segments[0] as string);
 
     if (!session) {
+      didLandOnHome.current = false;
       if (!inAuth) router.replace("/(auth)/login");
       return;
     }
 
     if (!isOnboarded) {
+      didLandOnHome.current = false;
       if (!inOnboarding) router.replace("/onboarding");
       return;
     }
 
-    if (!inApp && !inDetailScreen) {
-      router.replace("/(app)/");
+    // On the very first render after auth resolves (including app refresh),
+    // always land on home — Expo Router restores the last active tab otherwise.
+    if (!didLandOnHome.current && !inDetailScreen) {
+      didLandOnHome.current = true;
+      router.replace("/(app)/home");
     }
   }, [authLoading, sportLoading, session, isOnboarded, segments]);
 
@@ -69,13 +74,15 @@ function RootNavigator() {
     <>
       <StatusBar style={mode === "dark" ? "light" : "dark"} />
       <FollowedPlayersProvider>
+      <FollowedPlayersAllProvider>
+      <FollowedTeamsProvider>
         <Stack screenOptions={{ headerShown: false }}>
-          <Stack.Screen name="player/[id]" options={{ ...detailHeader, title: "Player" }} />
-          <Stack.Screen name="game/[id]" options={{ ...detailHeader, title: "Game" }} />
           <Stack.Screen name="tournament/[id]" options={{ headerShown: false }} />
           <Stack.Screen name="match/[id]" options={{ ...detailHeader, title: "Match" }} />
           <Stack.Screen name="scorecard" options={{ ...detailHeader, title: "Scorecard" }} />
         </Stack>
+      </FollowedTeamsProvider>
+      </FollowedPlayersAllProvider>
       </FollowedPlayersProvider>
     </>
   );

@@ -162,8 +162,8 @@ function GolfTournamentDetail({ id }: { id: string }) {
             {scores.map((score) => {
               const hasData = hasRoundData(score) || score.par !== 0 || score.strokes > 0;
               const badge = score.dq ? "DQ" : score.wd ? "WD" : !score.made_cut ? "MC" : null;
-              const firstName = score.player?.display_first_name ?? score.player?.first_name ?? "";
-              const lastName = score.player?.display_last_name ?? score.player?.last_name ?? "";
+              const firstName = score.player?.first_name ?? "";
+              const lastName = score.player?.last_name ?? "";
               return (
                 <TouchableOpacity
                   key={score.id}

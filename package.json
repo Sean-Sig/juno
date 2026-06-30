@@ -16,6 +16,7 @@
   },
   "packageManager": "npm@11.12.1",
   "devDependencies": {
+    "@types/phoenix": "^1.6.7",
     "turbo": "^2.0.0",
     "typescript": "~6.0.3"
   }

@@ -28,6 +28,7 @@ import {
   type FootballGame,
   type SoccerGame,
 } from "@juno/api";
+import { Ionicons } from "@expo/vector-icons";
 import { useTheme, spacing, typography, radius, countryFlag, type Palette } from "@juno/ui";
 
 type FilterTab = "live" | "upcoming" | "final";
@@ -115,8 +116,12 @@ type SharedGame = {
   period_time: string | null;
   home_score: number | null;
   away_score: number | null;
-  home_team: { name: string; full_name?: string | null; abbreviation: string | null; logo?: string | null } | null;
-  away_team: { name: string; full_name?: string | null; abbreviation: string | null; logo?: string | null } | null;
+  home_team: { id: string; name: string; full_name?: string | null; abbreviation: string | null; logo?: string | null } | null;
+  away_team: { id: string; name: string; full_name?: string | null; abbreviation: string | null; logo?: string | null } | null;
+  // Soccer-only — undefined for basketball/hockey games, harmless to check.
+  penalty_shootout?: boolean | null;
+  home_score_pen?: number | null;
+  away_score_pen?: number | null;
 };
 
 function GameCardShell({
@@ -145,8 +150,20 @@ function GameCardShell({
   const { colors } = useTheme();
   const styles = useMemo(() => createStyles(colors), [colors]);
 
-  const awayWins = isFinished && (game.away_score ?? 0) > (game.home_score ?? 0);
-  const homeWins = isFinished && (game.home_score ?? 0) > (game.away_score ?? 0);
+  // A penalty shootout is only played after regulation/ET ends level, so
+  // away_score/home_score are tied by definition — read the real winner off
+  // the penalty score instead.
+  const decidedByPens =
+    isFinished && game.penalty_shootout === true && game.away_score_pen != null && game.home_score_pen != null;
+  const awayPenScore = decidedByPens ? game.away_score_pen : null;
+  const homePenScore = decidedByPens ? game.home_score_pen : null;
+
+  const awayWins = decidedByPens
+    ? awayPenScore! > homePenScore!
+    : isFinished && (game.away_score ?? 0) > (game.home_score ?? 0);
+  const homeWins = decidedByPens
+    ? homePenScore! > awayPenScore!
+    : isFinished && (game.home_score ?? 0) > (game.away_score ?? 0);
 
   // Goal-flash animation — pop the scorer's number and flash a "GOAL" banner
   // whenever a live score ticks up (driven by the soccer_delta websocket push).
@@ -247,9 +264,10 @@ function GameCardShell({
           name={game.away_team?.name ?? "TBD"}
           fullName={game.away_team?.full_name}
           score={game.away_score}
+          penScore={awayPenScore}
           showScore={isLive || isFinished}
           winner={awayWins}
-          loser={homeWins}   /* home won → away lost */
+          loser={homeWins}
           pulse={awayPulse}
         />
         <TeamScoreRow
@@ -259,9 +277,10 @@ function GameCardShell({
           name={game.home_team?.name ?? "TBD"}
           fullName={game.home_team?.full_name}
           score={game.home_score}
+          penScore={homePenScore}
           showScore={isLive || isFinished}
           winner={homeWins}
-          loser={awayWins}   /* away won → home lost */
+          loser={awayWins}
           pulse={homePulse}
         />
       </View>
@@ -279,6 +298,7 @@ function TeamScoreRow({
   name,
   fullName,
   score,
+  penScore,
   showScore,
   winner,
   loser,
@@ -290,6 +310,7 @@ function TeamScoreRow({
   name: string;
   fullName?: string | null;
   score: number | null;
+  penScore?: number | null;
   showScore: boolean;
   winner: boolean;
   loser: boolean;
@@ -329,6 +350,7 @@ function TeamScoreRow({
           ]}
         >
           {score}
+          {penScore != null && <Text style={styles.teamScorePen}> ({penScore})</Text>}
         </Animated.Text>
       ) : !showScore ? (
         <View style={styles.teamScorePlaceholder} />
@@ -659,7 +681,6 @@ function nflRecord(team: FootballGame["away_team"] | FootballGame["home_team"]):
 function NFLGameCard({ game, onPress }: { game: FootballGame; onPress: () => void }) {
   const { colors } = useTheme();
   const styles = useMemo(() => createStyles(colors), [colors]);
-
   const isLive = game.status === "live";
   const isFinal = game.status === "finished";
   const away = game.away_team;
@@ -992,9 +1013,6 @@ function SoccerGameCard({ game, onPress }: { game: SoccerGame; onPress: () => vo
   const isLive = game.status === "live";
   const isFinished = game.status === "finished";
 
-  // Team "abbreviation" is unreliable for national teams (often a literal
-  // "TBD" placeholder until the matchup is confirmed) — a flag derived from
-  // the team/country name is more useful and always correct once known.
   return (
     <GameCardShell
       game={game}
@@ -1631,12 +1649,21 @@ function createStyles(colors: Palette) {
     teamScoreWinner: {
       color: colors.primary,
     },
+    teamScorePen: {
+      fontSize: 15,
+      fontWeight: "700",
+      color: colors.textSecondary,
+    },
     teamScoreMuted: {
       color: colors.textSecondary,
       fontWeight: "600",
     },
     teamScorePlaceholder: {
       width: 42,
+    },
+    followHeart: {
+      marginLeft: spacing.xs,
+      padding: 2,
     },
 
     // ── NFL games ──

@@ -29,7 +29,7 @@ const ROUND_LABELS: Record<string, string> = {
 };
 
 function getDisplayName(player: Player) {
-  return `${(player as GolfPlayer).display_first_name ?? player.first_name} ${(player as GolfPlayer).display_last_name ?? player.last_name}`;
+  return `${player.first_name} ${player.last_name}`;
 }
 
 function calculateAge(dob: string): number | null {
@@ -141,8 +141,9 @@ function getRankStats(player: Player, sport: Sport) {
 export default function PlayerScreen() {
   const { colors } = useTheme();
   const styles = useMemo(() => createStyles(colors), [colors]);
-  const { id, teamId, from } = useLocalSearchParams<{ id: string; teamId?: string; from?: string }>();
-  const { activeSport } = useSport();
+  const { id, teamId, from, sport: sportParam } = useLocalSearchParams<{ id: string; teamId?: string; from?: string; sport?: string }>();
+  const { activeSport: contextSport } = useSport();
+  const activeSport = (sportParam as typeof contextSport | undefined) ?? contextSport;
   const { session } = useAuth();
   const { isFollowed, follow, unfollow } = useFollowedPlayers();
   const { queuePlayer } = useScoutLineup();
@@ -503,7 +504,7 @@ function TennisScorecard({
         const opponentId = isP1 ? match.player2_id : match.player1_id;
         const opponent = opponentId ? playerMap.get(opponentId) : undefined;
         const opponentName = opponent
-          ? `${opponent.display_first_name ?? opponent.first_name} ${opponent.display_last_name ?? opponent.last_name}`
+          ? `${opponent.first_name} ${opponent.last_name}`
           : "TBD";
 
         const playerSide = isP1 ? "1" : "2";

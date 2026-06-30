@@ -3,7 +3,7 @@ import type { FootballGame, FootballTeam, FootballPlayer } from "./types";
 
 export const football = {
   /** GET /api/v4/football/games — filterable by date/league/status */
-  getGames(params?: { date?: string; league?: string; status?: string } & PageParams) {
+  getGames(params?: { date?: string; league?: string; status?: string; team_id?: string } & PageParams) {
     return apiFetch<{ data: FootballGame[] }>(`/api/v4/football/games${buildQuery(params)}`);
   },
 
@@ -44,6 +44,26 @@ export const football = {
     return apiFetch("/api/v4/football/players/unfollow", {
       method: "POST",
       body: { player_id: playerId },
+      token,
+    });
+  },
+
+  getFollowedTeams(token: string) {
+    return apiFetch<{ data: string[] }>("/api/v4/football/teams/followed_teams", { token });
+  },
+
+  followTeam(teamId: string, token: string) {
+    return apiFetch("/api/v4/football/teams/follow", {
+      method: "POST",
+      body: { team_id: teamId },
+      token,
+    });
+  },
+
+  unfollowTeam(teamId: string, token: string) {
+    return apiFetch("/api/v4/football/teams/unfollow", {
+      method: "POST",
+      body: { team_id: teamId },
       token,
     });
   },

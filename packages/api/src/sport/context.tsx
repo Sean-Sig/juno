@@ -5,7 +5,13 @@ import { useAuth } from "../auth/context";
 
 export type Sport = "golf" | "tennis" | "basketball" | "hockey" | "football" | "soccer";
 
-export const ALL_SPORTS: Sport[] = ["golf", "tennis", "basketball", "hockey", "football", "soccer"];
+// Not ready for general release yet — keep selectable in dev, hide from
+// onboarding/sport-settings in production builds until they're ready to ship.
+const DEV_ONLY_SPORTS: Sport[] = ["basketball", "hockey", "football"];
+
+export const ALL_SPORTS: Sport[] = (
+  ["golf", "tennis", "basketball", "hockey", "football", "soccer"] as Sport[]
+).filter((sport) => process.env.NODE_ENV !== "production" || !DEV_ONLY_SPORTS.includes(sport));
 
 const STORAGE_KEY = "juno_sport_prefs";
 

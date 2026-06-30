@@ -3,7 +3,7 @@ import type { SoccerGame, SoccerTeam, SoccerPlayer } from "./types";
 
 export const soccer = {
   /** GET /api/v4/soccer/games — filterable by date/league/status */
-  getGames(params?: { date?: string; league?: string; status?: string } & PageParams) {
+  getGames(params?: { date?: string; league?: string; status?: string; team_id?: string } & PageParams) {
     return apiFetch<{ data: SoccerGame[] }>(`/api/v4/soccer/games${buildQuery(params)}`);
   },
 
@@ -44,6 +44,26 @@ export const soccer = {
     return apiFetch("/api/v4/soccer/players/unfollow", {
       method: "POST",
       body: { player_id: playerId },
+      token,
+    });
+  },
+
+  getFollowedTeams(token: string) {
+    return apiFetch<{ data: string[] }>("/api/v4/soccer/teams/followed_teams", { token });
+  },
+
+  followTeam(teamId: string, token: string) {
+    return apiFetch("/api/v4/soccer/teams/follow", {
+      method: "POST",
+      body: { team_id: teamId },
+      token,
+    });
+  },
+
+  unfollowTeam(teamId: string, token: string) {
+    return apiFetch("/api/v4/soccer/teams/unfollow", {
+      method: "POST",
+      body: { team_id: teamId },
       token,
     });
   },

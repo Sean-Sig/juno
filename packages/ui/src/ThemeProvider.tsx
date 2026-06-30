@@ -1,5 +1,5 @@
 import React, { createContext, useContext, useEffect, useMemo, useState } from "react";
-import { useColorScheme } from "react-native";
+import { useColorScheme, Appearance, AppState, type ColorSchemeName } from "react-native";
 import * as SecureStore from "expo-secure-store";
 import {
   golfPalettes,
@@ -44,8 +44,27 @@ const palettesBySport: Record<Sport, { light: Palette; dark: Palette }> = {
 const THEME_STORAGE_KEY = "juno_theme_preference";
 
 export function ThemeProvider({ sport, children }: { sport: Sport; children: React.ReactNode }) {
-  const systemScheme = useColorScheme();
+  const liveSystemScheme = useColorScheme();
+  const [systemScheme, setSystemScheme] = useState<ColorSchemeName | null | undefined>(liveSystemScheme);
   const [preference, setPreferenceState] = useState<ThemePreference>("system");
+
+  // useColorScheme()'s native change listener can miss or report a stale
+  // value on the first toggle after the system theme changes (a known iOS
+  // quirk — it catches up correctly on the next toggle) — so re-sync
+  // explicitly from Appearance.getColorScheme() whenever the app returns
+  // to the foreground, instead of relying solely on the listener.
+  useEffect(() => {
+    const sub = AppState.addEventListener("change", (state) => {
+      if (state === "active") {
+        setSystemScheme(Appearance.getColorScheme());
+      }
+    });
+    return () => sub.remove();
+  }, []);
+
+  useEffect(() => {
+    setSystemScheme(liveSystemScheme);
+  }, [liveSystemScheme]);
 
   // Load once on mount — sport changes don't affect the stored preference
   useEffect(() => {

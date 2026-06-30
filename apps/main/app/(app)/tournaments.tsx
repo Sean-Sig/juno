@@ -245,8 +245,8 @@ export default function TournamentsScreen() {
   const filteredScores = useMemo(() => {
     if (!q) return scores;
     return scores.filter((s) => {
-      const first = (s.player?.display_first_name ?? s.player?.first_name ?? "").toLowerCase();
-      const last = (s.player?.display_last_name ?? s.player?.last_name ?? "").toLowerCase();
+      const first = (s.player?.first_name ?? "").toLowerCase();
+      const last = (s.player?.last_name ?? "").toLowerCase();
       return first.includes(q) || last.includes(q) || `${first} ${last}`.includes(q);
     });
   }, [scores, q]);
@@ -365,7 +365,7 @@ export default function TournamentsScreen() {
                   <Text style={styles.leadMargin}>
                     {(() => {
                       const gap = scores[1].par - scores[0].par;
-                      const leader = `${scores[0].player?.display_last_name ?? scores[0].player?.last_name ?? "Leader"}`;
+                      const leader = `${scores[0].player?.last_name ?? "Leader"}`;
                       return `${leader} leads by ${gap} shot${gap !== 1 ? "s" : ""}`;
                     })()}
                   </Text>
@@ -400,8 +400,8 @@ export default function TournamentsScreen() {
                     showToday={showToday}
                     coursePar={coursePar}
                     onScorecard={() => {
-                      const firstName = item.player?.display_first_name ?? item.player?.first_name ?? "";
-                      const lastName = item.player?.display_last_name ?? item.player?.last_name ?? "";
+                      const firstName = item.player?.first_name ?? "";
+                      const lastName = item.player?.last_name ?? "";
                       router.push({
                         pathname: "/scorecard",
                         params: {
@@ -584,8 +584,8 @@ function LeaderboardRow({
       <Text style={styles.place}>{score.display_place ?? "—"}</Text>
       <View style={styles.playerInfo}>
         <Text style={styles.playerName}>
-          {score.player?.display_first_name ?? score.player?.first_name}{" "}
-          {score.player?.display_last_name ?? score.player?.last_name}
+          {score.player?.first_name}{" "}
+          {score.player?.last_name}
         </Text>
         <Text style={styles.country}>{score.player?.country}</Text>
       </View>

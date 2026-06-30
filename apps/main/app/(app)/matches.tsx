@@ -21,14 +21,18 @@ import { LiveBadge, useTheme, spacing, typography, radius, type Palette } from "
 
 const TEAM_ID = process.env.EXPO_PUBLIC_TENNIS_TEAM_ID ?? "00000000-0000-0000-0000-000000000002";
 
+// Scout isn't live yet, so the H2H "Compare" button has nowhere useful to send
+// players — hide it until Scout ships, then flip this back on.
+const SHOW_COMPARE_BUTTON = false;
+
 // ---------------------------------------------------------------------------
 // Helpers
 // ---------------------------------------------------------------------------
 
 function playerName(player: TennisPlayer | null | undefined): string {
   if (!player) return "";
-  const first = player.display_first_name ?? player.first_name ?? "";
-  const last = player.display_last_name ?? player.last_name ?? "";
+  const first = player.first_name ?? "";
+  const last = player.last_name ?? "";
   return `${first} ${last}`.trim();
 }
 
@@ -37,8 +41,8 @@ function playerName(player: TennisPlayer | null | undefined): string {
 function playerShortName(player: TennisPlayer | null | undefined): string {
   if (!player) return "";
   if (player.short_name) return player.short_name;
-  const first = player.display_first_name ?? player.first_name ?? "";
-  const last = player.display_last_name ?? player.last_name ?? "";
+  const first = player.first_name ?? "";
+  const last = player.last_name ?? "";
   return `${first} ${last}`.trim();
 }
 
@@ -887,7 +891,7 @@ function MatchCard({
       </View>
 
       {/* H2H button — upcoming matches with two known players only */}
-      {!live && !finished && match.status === "scheduled" && match.player1_id && match.player2_id && onH2HPress && (
+      {SHOW_COMPARE_BUTTON && !live && !finished && match.status === "scheduled" && match.player1_id && match.player2_id && onH2HPress && (
         <TouchableOpacity style={[styles.h2hButton, { borderTopColor: accentColor + "33" }]} onPress={onH2HPress} activeOpacity={0.7}>
           <Ionicons name="stats-chart" size={13} color={accentColor} />
           <Text style={[styles.h2hButtonText, { color: accentColor }]}>Compare</Text>

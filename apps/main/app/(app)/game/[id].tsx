@@ -28,6 +28,7 @@ import {
 } from "@juno/api";
 import { Channel } from "phoenix";
 import { useTheme, spacing, typography, radius, countryFlag, type Palette } from "@juno/ui";
+import { useFollowedTeams } from "../../../context/FollowedTeamsContext";
 
 type Game = BasketballGame | HockeyGame | FootballGame | SoccerGame;
 
@@ -71,12 +72,14 @@ function periodLabel(game: Game, sport: string): string {
 }
 
 export default function GameScreen() {
-  const { id } = useLocalSearchParams<{ id: string }>();
-  const { activeSport } = useSport();
+  const { id, sport: sportParam } = useLocalSearchParams<{ id: string; sport?: string }>();
+  const { activeSport: contextSport } = useSport();
+  const activeSport = (sportParam as typeof contextSport | undefined) ?? contextSport;
   const { colors } = useTheme();
   const styles = useMemo(() => createStyles(colors), [colors]);
   const navigation = useNavigation();
   const router = useRouter();
+  const { isFollowed, follow, unfollow } = useFollowedTeams();
 
   const [game, setGame] = useState<Game | null>(null);
   const [loading, setLoading] = useState(true);
@@ -220,14 +223,34 @@ export default function GameScreen() {
   const isFinished = game.status === "finished";
   const away = game.away_team;
   const home = game.home_team;
+  const awayId = away?.id;
+  const homeId = home?.id;
+  const awayFollowed = awayId ? isFollowed(activeSport as any, awayId) : false;
+  const homeFollowed = homeId ? isFollowed(activeSport as any, homeId) : false;
 
   // National-team abbreviations are unreliable (often a literal "TBD"
   // placeholder) — fall back to a flag derived from the team/country name.
   const awayFlag = activeSport === "soccer" ? countryFlag(away?.name) : null;
   const homeFlag = activeSport === "soccer" ? countryFlag(home?.name) : null;
 
-  const awayWins = isFinished && (game.away_score ?? 0) > (game.home_score ?? 0);
-  const homeWins = isFinished && (game.home_score ?? 0) > (game.away_score ?? 0);
+  // A penalty shootout is only played after regulation/ET ends level, so
+  // away_score/home_score are tied by definition — the actual winner has to
+  // be read off the penalty score instead.
+  const decidedByPens =
+    isFinished &&
+    isSoccerGame(game, activeSport) &&
+    game.penalty_shootout === true &&
+    game.away_score_pen != null &&
+    game.home_score_pen != null;
+  const awayPenScore = decidedByPens ? (game as SoccerGame).away_score_pen : null;
+  const homePenScore = decidedByPens ? (game as SoccerGame).home_score_pen : null;
+
+  const awayWins = decidedByPens
+    ? awayPenScore! > homePenScore!
+    : isFinished && (game.away_score ?? 0) > (game.home_score ?? 0);
+  const homeWins = decidedByPens
+    ? homePenScore! > awayPenScore!
+    : isFinished && (game.home_score ?? 0) > (game.away_score ?? 0);
 
   // Build period breakdown
   let periods: { label: string; away: number | null; home: number | null }[];
@@ -356,7 +379,21 @@ export default function GameScreen() {
             {(isLive || isFinished) && game.away_score != null && (
               <Animated.Text style={[styles.score, awayWins && styles.scoreWinner, { transform: [{ scale: awayPulse }] }]}>
                 {game.away_score}
+                {awayPenScore != null && <Text style={styles.scorePen}> ({awayPenScore})</Text>}
               </Animated.Text>
+            )}
+            {awayId && (
+              <TouchableOpacity
+                onPress={() => awayFollowed ? unfollow(activeSport as any, awayId) : follow(activeSport as any, awayId)}
+                hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+                style={styles.teamFollowBtn}
+              >
+                <Ionicons
+                  name={awayFollowed ? "checkmark-circle" : "add-circle-outline"}
+                  size={26}
+                  color={colors.primary}
+                />
+              </TouchableOpacity>
             )}
           </View>
 
@@ -375,7 +412,21 @@ export default function GameScreen() {
             {(isLive || isFinished) && game.home_score != null && (
               <Animated.Text style={[styles.score, homeWins && styles.scoreWinner, { transform: [{ scale: homePulse }] }]}>
                 {game.home_score}
+                {homePenScore != null && <Text style={styles.scorePen}> ({homePenScore})</Text>}
               </Animated.Text>
+            )}
+            {homeId && (
+              <TouchableOpacity
+                onPress={() => homeFollowed ? unfollow(activeSport as any, homeId) : follow(activeSport as any, homeId)}
+                hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+                style={styles.teamFollowBtn}
+              >
+                <Ionicons
+                  name={homeFollowed ? "checkmark-circle" : "add-circle-outline"}
+                  size={26}
+                  color={colors.primary}
+                />
+              </TouchableOpacity>
             )}
           </View>
         </View>
@@ -666,12 +717,14 @@ function createStyles(colors: Palette) {
       letterSpacing: 0.3,
     },
     teamBlock: { flex: 1, alignItems: "center", gap: 3 },
+    teamFollowBtn: { marginTop: 4 },
     teamBlockWinner: {},
     teamFlagLarge: { fontSize: 34, marginBottom: 2 },
     teamName: { ...typography.h2, color: colors.text, fontWeight: "800" },
     teamFullName: { ...typography.caption, color: colors.textSecondary },
     score: { ...typography.h1, color: colors.text, fontWeight: "800", marginTop: spacing.xs },
     scoreWinner: { color: colors.primary },
+    scorePen: { ...typography.h3, color: colors.textSecondary, fontWeight: "700" },
     vsText: { ...typography.h3, color: colors.textSecondary, paddingHorizontal: spacing.sm },
     section: { marginTop: spacing.md },
     sectionTitle: {
