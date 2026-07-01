@@ -633,7 +633,7 @@ export default function FootballStandings() {
   const [teamsRefreshing, setTeamsRefreshing] = useState(false);
 
   const loadTeams = useCallback(async () => {
-    const { data } = await football.getTeams({ league: "NFL" });
+    const { data } = await football.getTeams({ league: "NFL", per_page: "50" });
     setAllTeams(data);
   }, []);
 

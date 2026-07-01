@@ -143,7 +143,7 @@ function TeamsView({ colors }: { colors: Palette }) {
   const [refreshing, setRefreshing] = useState(false);
 
   const load = useCallback(async () => {
-    const { data } = await soccer.getTeams();
+    const { data } = await soccer.getTeams({ per_page: "100" });
     setSections(groupByLeague(data));
   }, []);
 

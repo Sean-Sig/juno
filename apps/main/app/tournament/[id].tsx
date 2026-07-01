@@ -70,7 +70,20 @@ function GolfTournamentDetail({ id }: { id: string }) {
               t.enet_tournament_stage_id != null &&
               t.enet_tournament_stage_id === scheduleEntry?.enet_stage_id
           ) ?? null;
-        setTournament(matched);
+
+        if (matched) {
+          setTournament(matched);
+          return;
+        }
+
+        // Active list excludes finished tournaments — look up by enet_stage_id directly
+        if (scheduleEntry?.enet_stage_id) {
+          return golf
+            .getTournaments(scheduleEntry.team_id, { enet_stage_id: scheduleEntry.enet_stage_id })
+            .then(({ data: fallback }) => {
+              setTournament(fallback[0] ?? null);
+            });
+        }
       })
       .catch((e) => console.error("[TournamentDetail] load error:", e));
   }, [id]);

@@ -442,6 +442,7 @@ export default function TournamentsScreen() {
             <TournamentCard
               entry={item}
               onPress={() => router.push(`/tournament/${item.id}?sport=golf`)}
+              showWinner={false}
             />
           )}
           ListEmptyComponent={
@@ -466,6 +467,7 @@ export default function TournamentsScreen() {
             <TournamentCard
               entry={item}
               onPress={() => router.push(`/tournament/${item.id}?sport=golf`)}
+              showWinner={true}
             />
           )}
           ListEmptyComponent={
@@ -484,7 +486,7 @@ export default function TournamentsScreen() {
 // Tournament card (Upcoming + Final)
 // ---------------------------------------------------------------------------
 
-function TournamentCard({ entry, onPress }: { entry: GolfScheduleEntry; onPress: () => void }) {
+function TournamentCard({ entry, onPress, showWinner = false }: { entry: GolfScheduleEntry; onPress: () => void; showWinner?: boolean }) {
   const { colors } = useTheme();
   const styles = useMemo(() => createStyles(colors), [colors]);
 
@@ -497,7 +499,7 @@ function TournamentCard({ entry, onPress }: { entry: GolfScheduleEntry; onPress:
     <TouchableOpacity style={styles.card} onPress={onPress} activeOpacity={0.8}>
       <Text style={styles.cardName}>{entry.name}</Text>
       {dateStr ? <Text style={styles.cardDates}>{dateStr}</Text> : null}
-      {entry.winners_name ? (
+      {showWinner && entry.winners_name ? (
         <Text style={styles.cardWinner}>🏆 {entry.winners_name}</Text>
       ) : null}
     </TouchableOpacity>

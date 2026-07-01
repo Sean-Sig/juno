@@ -81,6 +81,26 @@ function isLiveMatch(match: TennisMatch): boolean {
   return ["on_court", "warmup", "playing"].includes(match.status);
 }
 
+const ROUND_NAMES: Record<string, string> = {
+  F:    "Final",
+  SF:   "Semi Final",
+  QF:   "Quarter Final",
+  R16:  "Round of 16",
+  R32:  "Round of 32",
+  R64:  "Round of 64",
+  R128: "Round of 128",
+  RR:   "Round Robin",
+  BR:   "Bronze Medal",
+};
+
+function roundLabel(round: string | null | undefined, court: string | null | undefined): string {
+  const roundName = round ? (ROUND_NAMES[round] ?? round) : null;
+  if (roundName && court) return `${roundName} · ${court}`;
+  if (roundName) return roundName;
+  if (court) return court;
+  return "";
+}
+
 function isFinishedMatch(match: TennisMatch): boolean {
   return match.status.startsWith("finished");
 }
@@ -590,29 +610,34 @@ export default function MatchesScreen() {
               );
             }
             return (
-              <MatchCard
-                match={item}
-                playerMap={playerMap}
-                accentColor={surfaceAccentColor(item.surface ?? tournamentMap.get(item.tournament_id)?.surface ?? null)}
-                onPress={() => {
-                  const p1 = resolvePlayer(item.player1, item.player1_id, playerMap);
-                  const p2 = resolvePlayer(item.player2, item.player2_id, playerMap);
-                  const tournamentName = tournamentMap.get(item.tournament_id)?.name;
-                  router.push({
-                    pathname: `/match/${item.id}`,
-                    params: { p1Name: playerName(p1), p2Name: playerName(p2), tournamentName },
-                  });
-                }}
-                onPlayerPress={(playerId) => {
-                  router.push({
-                    pathname: `/(app)/player/${playerId}`,
-                    params: { teamId: item.tournament_id, from: "matches" },
-                  });
-                }}
-                onH2HPress={() => {
-                  router.push(`/(app)/match/h2h/${item.id}?from=matches`);
-                }}
-              />
+              <View>
+                {statusTab === "live" && roundLabel(item.round, item.court) ? (
+                  <Text style={styles.courtLabel}>{roundLabel(item.round, item.court)}</Text>
+                ) : null}
+                <MatchCard
+                  match={item}
+                  playerMap={playerMap}
+                  accentColor={surfaceAccentColor(item.surface ?? tournamentMap.get(item.tournament_id)?.surface ?? null)}
+                  onPress={() => {
+                    const p1 = resolvePlayer(item.player1, item.player1_id, playerMap);
+                    const p2 = resolvePlayer(item.player2, item.player2_id, playerMap);
+                    const tournamentName = tournamentMap.get(item.tournament_id)?.name;
+                    router.push({
+                      pathname: `/match/${item.id}`,
+                      params: { p1Name: playerName(p1), p2Name: playerName(p2), tournamentName },
+                    });
+                  }}
+                  onPlayerPress={(playerId) => {
+                    router.push({
+                      pathname: `/(app)/player/${playerId}`,
+                      params: { teamId: item.tournament_id, from: "matches" },
+                    });
+                  }}
+                  onH2HPress={() => {
+                    router.push(`/(app)/match/h2h/${item.id}?from=matches`);
+                  }}
+                />
+              </View>
             );
           }}
           SectionSeparatorComponent={() => <View style={styles.sectionGap} />}
@@ -737,10 +762,7 @@ function MatchCard({
       {live && (
         <View style={styles.liveCapsule}>
           <View style={styles.liveCapsuleDot} />
-          <Text style={styles.liveCapsuleText}>
-            {"LIVE"}
-            {match.court ? `  ·  ${match.court}` : ""}
-          </Text>
+          <Text style={styles.liveCapsuleText}>LIVE</Text>
         </View>
       )}
 
@@ -1049,6 +1071,16 @@ function createStyles(colors: Palette) {
       ...typography.caption,
       fontWeight: "700",
       letterSpacing: 0.3,
+    },
+    courtLabel: {
+      ...typography.caption,
+      color: colors.textSecondary,
+      fontWeight: "600",
+      letterSpacing: 0.5,
+      textTransform: "uppercase",
+      marginTop: spacing.sm,
+      marginBottom: 4,
+      marginLeft: spacing.md,
     },
     courtHeader: {
       flexDirection: "row",

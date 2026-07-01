@@ -20,7 +20,7 @@ export const golf = {
     );
   },
 
-  getTournaments(teamId: string, params?: { hide_scores?: boolean } & PageParams) {
+  getTournaments(teamId: string, params?: { hide_scores?: boolean; enet_stage_id?: string } & PageParams) {
     return apiFetch<{ data: GolfTournament[] }>(`/api/v4/golf/tournaments/${teamId}${buildQuery(params)}`);
   },
 

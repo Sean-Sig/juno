@@ -652,7 +652,7 @@ export default function HomeScreen() {
             const [liveResp, todayResp, teamsResp] = await Promise.all([
               getGames(sport as TeamSport, { status: "live" }),
               getGames(sport as TeamSport, { date: today }),
-              getTeams(sport as TeamSport),
+              getTeams(sport as TeamSport, { per_page: "100" }),
             ]);
 
             // Merge today's games, deduped, live first
@@ -709,12 +709,19 @@ export default function HomeScreen() {
             base.followedPlayers = players.filter((p): p is AnyPlayer => p != null);
           }
 
-          // Suggested players: top players minus already-followed, capped at 8
-          const playersResp = await getPlayers(sport, { per_page: "12" });
+          // Suggested players: top-ranked players minus already-followed, capped at 10
+          const playerSortParam =
+            sport === "golf" ? "world_rankings" :
+            sport === "tennis" ? "singles_rank" :
+            undefined;
+          const playersResp = await getPlayers(sport, {
+            per_page: "20",
+            ...(playerSortParam ? { sort: playerSortParam } : {}),
+          });
           const candidatePlayers: AnyPlayer[] = (playersResp.data ?? []) as AnyPlayer[];
           base.suggestedPlayers = candidatePlayers
             .filter((p) => !followedPlayerIds[sport].includes((p as any).id))
-            .slice(0, 8);
+            .slice(0, 10);
         } catch {
           // Return empty section on error — don't crash the whole feed
         }
@@ -743,7 +750,7 @@ export default function HomeScreen() {
   );
 
   return (
-    <SafeAreaView style={styles.container} edges={["bottom"]}>
+    <SafeAreaView style={styles.container} edges={["left", "right"]}>
       <ScrollView
         style={styles.scroll}
         contentContainerStyle={styles.scrollContent}
