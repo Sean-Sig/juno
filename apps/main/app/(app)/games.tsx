@@ -1305,9 +1305,6 @@ function SoccerGamesView() {
             data={liveGames}
             keyExtractor={(g) => g.id}
             contentContainerStyle={styles.listContent}
-            refreshControl={
-              <RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor={colors.primary} />
-            }
             renderItem={({ item }) => (
               <SoccerGameCard game={item} onPress={() => router.push(`/game/${item.id}`)} />
             )}

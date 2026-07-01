@@ -154,6 +154,7 @@ export type GolfScheduleEntry = {
   hidden: boolean;
   priority: number;
   winners_name: string | null;
+  winners_playoff: boolean;
   winners_score: string | null;
   winners_name_loc_key: string | null;
   theme: Record<string, string> | null;

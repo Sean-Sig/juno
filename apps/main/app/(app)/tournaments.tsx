@@ -102,6 +102,7 @@ export default function TournamentsScreen() {
   }, [loadTournaments]);
 
   function onRefresh() {
+    if (statusTab === "live") return; // socket pushes updates automatically
     setRefreshing(true);
     load().finally(() => setRefreshing(false));
   }
@@ -500,7 +501,12 @@ function TournamentCard({ entry, onPress, showWinner = false }: { entry: GolfSch
       <Text style={styles.cardName}>{entry.name}</Text>
       {dateStr ? <Text style={styles.cardDates}>{dateStr}</Text> : null}
       {showWinner && entry.winners_name ? (
-        <Text style={styles.cardWinner}>🏆 {entry.winners_name}</Text>
+        <View style={styles.winnerRow}>
+          <Text style={styles.cardWinner}>🏆 {entry.winners_name}</Text>
+          {entry.winners_playoff ? (
+            <Text style={styles.winnerPlayoff}>Won in playoff</Text>
+          ) : null}
+        </View>
       ) : null}
     </TouchableOpacity>
   );
@@ -771,6 +777,8 @@ function createStyles(colors: Palette) {
     },
     cardName: { ...typography.h3, color: colors.text, fontWeight: "700", marginBottom: 4 },
     cardDates: { ...typography.caption, color: colors.textSecondary, marginBottom: 4 },
-    cardWinner: { ...typography.label, color: colors.primary, fontWeight: "600", marginTop: 2 },
+    winnerRow: { marginTop: spacing.sm },
+    cardWinner: { ...typography.label, color: colors.primary, fontWeight: "600" },
+    winnerPlayoff: { ...typography.caption, color: colors.textSecondary, marginTop: 2 },
   });
 }

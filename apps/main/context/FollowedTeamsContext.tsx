@@ -117,7 +117,7 @@ export function FollowedTeamsProvider({ children }: { children: React.ReactNode 
     <FollowedTeamsCtx.Provider
       value={{
         followedIds,
-        isFollowed: (sport, teamId) => followedIds[sport].includes(teamId),
+        isFollowed: (sport, teamId) => (followedIds[sport] ?? []).includes(teamId),
         follow,
         unfollow,
       }}
