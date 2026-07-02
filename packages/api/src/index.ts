@@ -18,6 +18,7 @@ export { joinHockeyGamesChannel } from "./hockey/channel";
 export { joinSoccerGamesChannel } from "./soccer/channel";
 export { getSocket, disconnectSocket } from "./socket/socket";
 export { setUnauthorizedHandler } from "./client";
+export { registerPushToken } from "./notifications";
 
 export type * from "./golf/types";
 export type * from "./tennis/types";

@@ -38,6 +38,8 @@ export type SoccerPlayer = {
   league: string | null;
   team_id: string | null;
   enet_id: string | null;
+  market_value: number | null;
+  rank?: number;
 };
 
 export type SoccerGame = {

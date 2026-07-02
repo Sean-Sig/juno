@@ -28,7 +28,8 @@
         }
       ],
       "expo-localization",
-      "expo-image"
+      "expo-image",
+      "expo-notifications"
     ]
   }
 }

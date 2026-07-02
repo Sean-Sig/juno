@@ -14,6 +14,7 @@ type Props = {
   country?: string | null;
   subtitle?: string | null;
   photo?: string | null;
+  photoFit?: "cover" | "contain";
   rank?: number | null;
   rankLabel?: string;
   /** Injury status string ("Out", "Day-To-Day", etc.) — omit/null when the player is available. */
@@ -29,6 +30,7 @@ export function PlayerCard({
   country,
   subtitle,
   photo,
+  photoFit = "cover",
   rank,
   rankLabel = "Rank",
   injuryStatus,
@@ -44,7 +46,7 @@ export function PlayerCard({
     <TouchableOpacity style={styles.container} onPress={onPress} activeOpacity={0.7}>
       <View style={styles.photoWrapper}>
         {photo ? (
-          <Image source={{ uri: photo }} style={styles.photo} cachePolicy="memory-disk" />
+          <Image source={{ uri: photo }} style={styles.photo} contentFit={photoFit} cachePolicy="memory-disk" />
         ) : (
           <View style={styles.photoPlaceholder}>
             <Text style={styles.initials}>

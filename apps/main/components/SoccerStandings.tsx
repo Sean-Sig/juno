@@ -9,7 +9,6 @@ import {
   FlatList,
   TextInput,
   TouchableOpacity,
-  ScrollView,
 } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { Image } from "expo-image";
@@ -24,15 +23,6 @@ import { useFollowedPlayers } from "../context/FollowedPlayersContext";
 
 type ViewMode = "teams" | "players";
 type Section = { title: string; data: SoccerTeam[] };
-type PositionFilter = "all" | "GK" | "DF" | "MF" | "FW";
-
-const POSITIONS: { key: PositionFilter; label: string; match: (pos: string) => boolean }[] = [
-  { key: "all", label: "All", match: () => true },
-  { key: "GK", label: "Goalkeepers", match: (p) => p.includes("keeper") || p === "gk" },
-  { key: "DF", label: "Defenders", match: (p) => p.includes("defen") || p === "df" },
-  { key: "MF", label: "Midfielders", match: (p) => p.includes("mid") || p === "mf" },
-  { key: "FW", label: "Forwards", match: (p) => p.includes("forward") || p.includes("striker") || p.includes("attack") || p === "fw" },
-];
 
 const LEAGUE_LABELS: Record<string, string> = {
   EPL: "EPL",
@@ -143,7 +133,7 @@ function TeamsView({ colors }: { colors: Palette }) {
   const [refreshing, setRefreshing] = useState(false);
 
   const load = useCallback(async () => {
-    const { data } = await soccer.getTeams({ per_page: "100" });
+    const { data } = await soccer.getTeams({ per_page: 100 });
     setSections(groupByLeague(data));
   }, []);
 
@@ -196,6 +186,13 @@ function TeamsView({ colors }: { colors: Palette }) {
 // Players view
 // ---------------------------------------------------------------------------
 
+function formatMarketValue(value: number | null | undefined): string | undefined {
+  if (value == null) return undefined;
+  if (value >= 1_000_000) return `€${(value / 1_000_000).toFixed(1)}M`;
+  if (value >= 1_000) return `€${(value / 1_000).toFixed(0)}K`;
+  return `€${value}`;
+}
+
 function PlayersView({ colors }: { colors: Palette }) {
   const styles = useMemo(() => createStyles(colors), [colors]);
   const router = useRouter();
@@ -203,56 +200,46 @@ function PlayersView({ colors }: { colors: Palette }) {
 
   const [players, setPlayers] = useState<SoccerPlayer[]>([]);
   const [query, setQuery] = useState("");
-  const [position, setPosition] = useState<PositionFilter>("all");
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [loadingMore, setLoadingMore] = useState(false);
   const [hasMore, setHasMore] = useState(true);
 
-  const load = useCallback((searchQuery?: string) => {
-    setHasMore(true);
+  const load = useCallback((page = 1, q?: string) => {
     return soccer
-      .getPlayers({ q: searchQuery || undefined, page: 1, per_page: PER_PAGE })
+      .getPlayers({ sort: "market_value", page, per_page: PER_PAGE, q: q || undefined })
       .then(({ data }) => {
-        setPlayers(data);
+        if (page === 1) setPlayers(data);
+        else setPlayers((prev) => [...prev, ...data]);
         setHasMore(data.length === PER_PAGE);
       });
   }, []);
 
   useEffect(() => {
     setLoading(true);
-    load().finally(() => setLoading(false));
+    load(1).finally(() => setLoading(false));
   }, [load]);
 
   // Debounced search
   useEffect(() => {
-    if (!query.trim()) {
-      load();
-      return;
-    }
+    const q = query.trim();
     const timer = setTimeout(() => {
       setLoading(true);
-      load(query.trim()).finally(() => setLoading(false));
+      load(1, q || undefined).finally(() => setLoading(false));
     }, 300);
     return () => clearTimeout(timer);
   }, [query]);
 
   function onRefresh() {
     setRefreshing(true);
-    load(query.trim() || undefined).finally(() => setRefreshing(false));
+    load(1, query.trim() || undefined).finally(() => setRefreshing(false));
   }
 
   function loadMore() {
-    if (loadingMore || !hasMore || loading || query.trim()) return;
+    if (loadingMore || !hasMore || loading) return;
     setLoadingMore(true);
     const nextPage = Math.floor(players.length / PER_PAGE) + 1;
-    soccer
-      .getPlayers({ page: nextPage, per_page: PER_PAGE })
-      .then(({ data }) => {
-        setPlayers((prev) => [...prev, ...data]);
-        setHasMore(data.length === PER_PAGE);
-      })
-      .finally(() => setLoadingMore(false));
+    load(nextPage, query.trim() || undefined).finally(() => setLoadingMore(false));
   }
 
   async function toggleFollow(playerId: string) {
@@ -260,15 +247,8 @@ function PlayersView({ colors }: { colors: Palette }) {
     else await follow(playerId);
   }
 
-  const displayed = useMemo(() => {
-    if (position === "all") return players;
-    const filter = POSITIONS.find((p) => p.key === position)!;
-    return players.filter((p) => filter.match((p.position ?? "").toLowerCase()));
-  }, [players, position]);
-
   return (
     <View style={{ flex: 1 }}>
-      {/* Search bar */}
       <View style={styles.searchBar}>
         <TextInput
           style={styles.input}
@@ -277,29 +257,9 @@ function PlayersView({ colors }: { colors: Palette }) {
           onChangeText={setQuery}
           placeholderTextColor={colors.textSecondary}
           returnKeyType="search"
+          autoCorrect={false}
         />
       </View>
-
-      {/* Position filter chips */}
-      <ScrollView
-        horizontal
-        showsHorizontalScrollIndicator={false}
-        style={styles.typePicker}
-        contentContainerStyle={styles.typePickerContent}
-      >
-        {POSITIONS.map((pos) => (
-          <TouchableOpacity
-            key={pos.key}
-            style={[styles.typeChip, position === pos.key && styles.typeChipActive]}
-            onPress={() => setPosition(pos.key)}
-            activeOpacity={0.7}
-          >
-            <Text style={[styles.typeChipText, position === pos.key && styles.typeChipTextActive]}>
-              {pos.label}
-            </Text>
-          </TouchableOpacity>
-        ))}
-      </ScrollView>
 
       {loading ? (
         <View style={styles.playerList}>
@@ -309,13 +269,13 @@ function PlayersView({ colors }: { colors: Palette }) {
         </View>
       ) : (
         <FlatList
-          data={displayed}
+          data={players}
           keyExtractor={(p) => p.id}
           contentContainerStyle={styles.playerList}
           refreshControl={
             <RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor={colors.primary} />
           }
-          onEndReached={query.trim() ? undefined : loadMore}
+          onEndReached={loadMore}
           onEndReachedThreshold={0.4}
           ListFooterComponent={
             loadingMore ? <ActivityIndicator color={colors.primary} style={styles.footerSpinner} /> : null
@@ -326,14 +286,16 @@ function PlayersView({ colors }: { colors: Palette }) {
               lastName={item.last_name}
               country={item.country}
               photo={item.photo}
-              rank={item.jersey_number != null ? parseInt(item.jersey_number, 10) || null : null}
-              rankLabel="No."
+              photoFit="contain"
+              rank={item.rank ?? null}
+              rankLabel="#"
+              subtitle={formatMarketValue(item.market_value)}
               following={isFollowed(item.id)}
               onToggleFollow={() => toggleFollow(item.id)}
               onPress={() => router.push(`/(app)/player/${item.id}`)}
             />
           )}
-          ListEmptyComponent={<Text style={styles.empty}>No players found.</Text>}
+          ListEmptyComponent={<Text style={styles.empty}>No player rankings available.</Text>}
         />
       )}
     </View>
@@ -461,22 +423,6 @@ function createStyles(colors: Palette) {
       fontSize: 15,
       color: colors.text,
     },
-    typePicker: {
-      flexGrow: 0,
-      flexShrink: 0,
-      marginHorizontal: spacing.md,
-      marginBottom: spacing.sm,
-    },
-    typePickerContent: { gap: spacing.xs },
-    typeChip: {
-      paddingVertical: spacing.sm,
-      paddingHorizontal: spacing.md,
-      borderRadius: radius.full,
-      backgroundColor: colors.card,
-    },
-    typeChipActive: { backgroundColor: colors.primary },
-    typeChipText: { ...typography.label, color: colors.textSecondary },
-    typeChipTextActive: { color: colors.textOnPrimary, fontWeight: "700" },
     playerList: { padding: spacing.md, paddingTop: 0 },
     footerSpinner: { marginVertical: spacing.md },
     empty: { ...typography.body, color: colors.textSecondary, textAlign: "center", marginTop: spacing.lg },

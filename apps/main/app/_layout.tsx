@@ -1,9 +1,10 @@
 import { Stack, useRouter, useSegments } from "expo-router";
 import { StatusBar } from "expo-status-bar";
-import { View, ActivityIndicator } from "react-native";
+import { View, ActivityIndicator, Platform } from "react-native";
 import * as SplashScreen from "expo-splash-screen";
+import * as Notifications from "expo-notifications";
 import React, { useEffect, useRef } from "react";
-import { AuthProvider, useAuth, SportProvider, useSport } from "@juno/api";
+import { AuthProvider, useAuth, SportProvider, useSport, registerPushToken } from "@juno/api";
 import { ThemeProvider, useTheme, typography } from "@juno/ui";
 import { FollowedPlayersProvider, FollowedPlayersAllProvider } from "../context/FollowedPlayersContext";
 import { FollowedTeamsProvider } from "../context/FollowedTeamsContext";
@@ -53,6 +54,25 @@ function RootNavigator() {
       router.replace("/(app)/home");
     }
   }, [authLoading, sportLoading, session, isOnboarded, segments]);
+
+  // Register Expo push token once per session. Silently skips in Expo Go
+  // (no projectId) and when permission is denied — never blocks the app.
+  useEffect(() => {
+    if (!session) return;
+
+    (async () => {
+      try {
+        const { status } = await Notifications.requestPermissionsAsync();
+        if (status !== "granted") return;
+
+        const tokenData = await Notifications.getExpoPushTokenAsync();
+        const platform = Platform.OS === "ios" ? "ios" : Platform.OS === "android" ? "android" : null;
+        await registerPushToken(tokenData.data, platform, session.token);
+      } catch {
+        // non-fatal: Expo Go (no projectId), permission denied, or network error
+      }
+    })();
+  }, [session?.token]);
 
   if (authLoading || sportLoading) {
     return (
