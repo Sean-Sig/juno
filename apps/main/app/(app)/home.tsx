@@ -196,8 +196,11 @@ function HomeFeedGameCard({
   const awayFollowed = away?.id ? isFollowed(sport, away.id) : false;
   const homeFollowed = home?.id ? isFollowed(sport, home.id) : false;
   const eitherFollowed = awayFollowed || homeFollowed;
-  const awayWins = isFinished && (game.away_score ?? 0) > (game.home_score ?? 0);
-  const homeWins = isFinished && (game.home_score ?? 0) > (game.away_score ?? 0);
+  const g = game as any;
+  const finalAwayScore = game.away_score != null ? game.away_score + (g.away_score_et ?? 0) : null;
+  const finalHomeScore = game.home_score != null ? game.home_score + (g.home_score_et ?? 0) : null;
+  const awayWins = isFinished && (finalAwayScore ?? 0) > (finalHomeScore ?? 0);
+  const homeWins = isFinished && (finalHomeScore ?? 0) > (finalAwayScore ?? 0);
   const awayFlag = sport === "soccer" ? countryFlag(away?.name) : null;
   const homeFlag = sport === "soccer" ? countryFlag(home?.name) : null;
 
@@ -235,8 +238,8 @@ function HomeFeedGameCard({
         <Text style={[styles.gameCardTeamName, awayFollowed && styles.gameCardTeamNameFollowed, isFinished && !awayWins && styles.teamMuted]} numberOfLines={1}>
           {away?.name ?? "TBD"}
         </Text>
-        {(isLive || isFinished) && game.away_score != null ? (
-          <Text style={[styles.gameCardScore, awayWins && styles.gameCardScoreWinner]}>{game.away_score}</Text>
+        {(isLive || isFinished) && finalAwayScore != null ? (
+          <Text style={[styles.gameCardScore, awayWins && styles.gameCardScoreWinner]}>{finalAwayScore}</Text>
         ) : null}
         <TouchableOpacity
           onPress={() => away?.id && (awayFollowed ? unfollow(sport, away.id) : follow(sport, away.id))}
@@ -261,8 +264,8 @@ function HomeFeedGameCard({
         <Text style={[styles.gameCardTeamName, homeFollowed && styles.gameCardTeamNameFollowed, isFinished && !homeWins && styles.teamMuted]} numberOfLines={1}>
           {home?.name ?? "TBD"}
         </Text>
-        {(isLive || isFinished) && game.home_score != null ? (
-          <Text style={[styles.gameCardScore, homeWins && styles.gameCardScoreWinner]}>{game.home_score}</Text>
+        {(isLive || isFinished) && finalHomeScore != null ? (
+          <Text style={[styles.gameCardScore, homeWins && styles.gameCardScoreWinner]}>{finalHomeScore}</Text>
         ) : null}
         <TouchableOpacity
           onPress={() => home?.id && (homeFollowed ? unfollow(sport, home.id) : follow(sport, home.id))}

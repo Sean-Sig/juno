@@ -122,6 +122,8 @@ type SharedGame = {
   penalty_shootout?: boolean | null;
   home_score_pen?: number | null;
   away_score_pen?: number | null;
+  home_score_et?: number | null;
+  away_score_et?: number | null;
 };
 
 function GameCardShell({
@@ -150,9 +152,17 @@ function GameCardShell({
   const { colors } = useTheme();
   const styles = useMemo(() => createStyles(colors), [colors]);
 
+  // Final score includes extra-time goals when played.
+  const finalAwayScore = game.away_score != null
+    ? game.away_score + (game.away_score_et ?? 0)
+    : null;
+  const finalHomeScore = game.home_score != null
+    ? game.home_score + (game.home_score_et ?? 0)
+    : null;
+
   // A penalty shootout is only played after regulation/ET ends level, so
-  // away_score/home_score are tied by definition — read the real winner off
-  // the penalty score instead.
+  // the final score is tied by definition — read the real winner off the
+  // penalty score instead.
   const decidedByPens =
     isFinished && game.penalty_shootout === true && game.away_score_pen != null && game.home_score_pen != null;
   const awayPenScore = decidedByPens ? game.away_score_pen : null;
@@ -160,10 +170,10 @@ function GameCardShell({
 
   const awayWins = decidedByPens
     ? awayPenScore! > homePenScore!
-    : isFinished && (game.away_score ?? 0) > (game.home_score ?? 0);
+    : isFinished && (finalAwayScore ?? 0) > (finalHomeScore ?? 0);
   const homeWins = decidedByPens
     ? homePenScore! > awayPenScore!
-    : isFinished && (game.home_score ?? 0) > (game.away_score ?? 0);
+    : isFinished && (finalHomeScore ?? 0) > (finalAwayScore ?? 0);
 
   // Goal-flash animation — pop the scorer's number and flash a "GOAL" banner
   // whenever a live score ticks up (driven by the soccer_delta websocket push).
@@ -263,7 +273,7 @@ function GameCardShell({
           flag={awayFlag}
           name={game.away_team?.name ?? "TBD"}
           fullName={game.away_team?.full_name}
-          score={game.away_score}
+          score={finalAwayScore}
           penScore={awayPenScore}
           showScore={isLive || isFinished}
           winner={awayWins}
@@ -276,7 +286,7 @@ function GameCardShell({
           flag={homeFlag}
           name={game.home_team?.name ?? "TBD"}
           fullName={game.home_team?.full_name}
-          score={game.home_score}
+          score={finalHomeScore}
           penScore={homePenScore}
           showScore={isLive || isFinished}
           winner={homeWins}

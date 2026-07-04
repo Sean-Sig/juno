@@ -245,12 +245,20 @@ export default function GameScreen() {
   const awayPenScore = decidedByPens ? (game as SoccerGame).away_score_pen : null;
   const homePenScore = decidedByPens ? (game as SoccerGame).home_score_pen : null;
 
+  const soccerGame = isSoccerGame(game, activeSport) ? (game as SoccerGame) : null;
+  const finalAwayScore = game.away_score != null
+    ? game.away_score + (soccerGame?.away_score_et ?? 0)
+    : null;
+  const finalHomeScore = game.home_score != null
+    ? game.home_score + (soccerGame?.home_score_et ?? 0)
+    : null;
+
   const awayWins = decidedByPens
     ? awayPenScore! > homePenScore!
-    : isFinished && (game.away_score ?? 0) > (game.home_score ?? 0);
+    : isFinished && (finalAwayScore ?? 0) > (finalHomeScore ?? 0);
   const homeWins = decidedByPens
     ? homePenScore! > awayPenScore!
-    : isFinished && (game.home_score ?? 0) > (game.away_score ?? 0);
+    : isFinished && (finalHomeScore ?? 0) > (finalAwayScore ?? 0);
 
   // Build period breakdown
   let periods: { label: string; away: number | null; home: number | null }[];
@@ -376,9 +384,9 @@ export default function GameScreen() {
                 {away.name}
               </Text>
             )}
-            {(isLive || isFinished) && game.away_score != null && (
+            {(isLive || isFinished) && finalAwayScore != null && (
               <Animated.Text style={[styles.score, awayWins && styles.scoreWinner, { transform: [{ scale: awayPulse }] }]}>
-                {game.away_score}
+                {finalAwayScore}
                 {awayPenScore != null && <Text style={styles.scorePen}> ({awayPenScore})</Text>}
               </Animated.Text>
             )}
@@ -409,9 +417,9 @@ export default function GameScreen() {
                 {home.name}
               </Text>
             )}
-            {(isLive || isFinished) && game.home_score != null && (
+            {(isLive || isFinished) && finalHomeScore != null && (
               <Animated.Text style={[styles.score, homeWins && styles.scoreWinner, { transform: [{ scale: homePulse }] }]}>
-                {game.home_score}
+                {finalHomeScore}
                 {homePenScore != null && <Text style={styles.scorePen}> ({homePenScore})</Text>}
               </Animated.Text>
             )}
@@ -458,7 +466,7 @@ export default function GameScreen() {
                 {periods.map((p, i) => (
                   <Text key={i} style={styles.qCell}>{p.away ?? "-"}</Text>
                 ))}
-                <Text style={[styles.qCell, styles.qTotal]}>{game.away_score ?? "-"}</Text>
+                <Text style={[styles.qCell, styles.qTotal]}>{finalAwayScore ?? "-"}</Text>
               </View>
               <View style={styles.qRow}>
                 <View style={[styles.qCell, styles.qTeamCell, styles.qTeamCellRow]}>
@@ -473,7 +481,7 @@ export default function GameScreen() {
                 {periods.map((p, i) => (
                   <Text key={i} style={styles.qCell}>{p.home ?? "-"}</Text>
                 ))}
-                <Text style={[styles.qCell, styles.qTotal]}>{game.home_score ?? "-"}</Text>
+                <Text style={[styles.qCell, styles.qTotal]}>{finalHomeScore ?? "-"}</Text>
               </View>
             </View>
           </View>
