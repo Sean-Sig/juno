@@ -8,7 +8,7 @@ export { fan } from "./fan/api";
 export { scout } from "./scout/api";
 export { auth } from "./auth/api";
 export { AuthProvider, useAuth } from "./auth/context";
-export { SportProvider, useSport, ALL_SPORTS } from "./sport/context";
+export { SportProvider, useSport, ALL_SPORTS, isSportComingSoon, isSportEnabled } from "./sport/context";
 
 export { saveSession, loadSession, clearSession } from "./auth/storage";
 export { joinGolfChannel } from "./golf/channel";

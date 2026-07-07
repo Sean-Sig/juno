@@ -70,6 +70,7 @@ export type SoccerGame = {
   venue_country: string | null;
   venue_capacity: number | null;
   round: string | null;
+  season_type: string | null;
   spectators: number | null;
   started_at: string | null;
   ended_at: string | null;

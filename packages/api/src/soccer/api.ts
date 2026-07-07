@@ -2,8 +2,10 @@ import { apiFetch, buildQuery, type PageParams } from "../client";
 import type { SoccerGame, SoccerTeam, SoccerPlayer } from "./types";
 
 export const soccer = {
-  /** GET /api/v4/soccer/games — filterable by date/league/status */
-  getGames(params?: { date?: string; league?: string; status?: string; team_id?: string } & PageParams) {
+  /** GET /api/v4/soccer/games — filterable by date/league/status/season_type */
+  getGames(
+    params?: { date?: string; league?: string; status?: string; team_id?: string; season_type?: string } & PageParams
+  ) {
     return apiFetch<{ data: SoccerGame[] }>(`/api/v4/soccer/games${buildQuery(params)}`);
   },
 

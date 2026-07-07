@@ -251,8 +251,6 @@ export default function MatchScreen() {
       });
     });
 
-    tennis.getMatchComments(id).then(({ data }) => setComments(data));
-
     const channel: Channel = joinTennisMatchChannel(id, {
       onState: (m) => setMatch(m),
       onDelta: (diff) => setMatch((prev) => (prev ? { ...prev, ...diff } : prev)),

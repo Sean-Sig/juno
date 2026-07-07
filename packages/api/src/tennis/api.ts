@@ -4,7 +4,6 @@ import type {
   TennisMatch,
   TennisTournament,
   TennisScheduleEntry,
-  MatchComment,
   H2HResponse,
   UpcomingMatchup,
   MatchAnalysis,
@@ -103,12 +102,6 @@ export const tennis = {
       method: "POST",
       token,
     });
-  },
-
-  getMatchComments(matchId: string, locale = "en", params?: PageParams) {
-    return apiFetch<{ data: MatchComment[] }>(
-      `/api/v4/tennis/match_comments${buildQuery({ match_id: matchId, locale, ...params })}`
-    );
   },
 
   followPlayer(playerId: string, token: string) {

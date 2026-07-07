@@ -341,7 +341,14 @@ export default function MatchesScreen() {
 
     const channel = joinTennisGamesChannel({
       onState: (incoming) => {
-        setAllMatches(incoming);
+        // Merge rather than replace — `incoming` is only the currently-live
+        // matches, and allMatches also holds upcoming/finished matches loaded
+        // via the initial REST call that this tab doesn't fetch on its own.
+        setAllMatches((prev) => {
+          const map = new Map(prev.map((m) => [m.id, m]));
+          incoming.forEach((m) => map.set(m.id, m));
+          return Array.from(map.values());
+        });
         // Fetch any players missing from the map (embedded may be null)
         setPlayerMap((prev) => {
           const missing = new Set<string>();
@@ -380,13 +387,6 @@ export default function MatchesScreen() {
     });
 
     return () => { channel.leave(); };
-  }, [statusTab]);
-
-  // Upcoming / Final tabs: re-fetch matches on tab switch
-  useEffect(() => {
-    if (statusTab === "live") return;
-    setLoading(true);
-    load().finally(() => setLoading(false));
   }, [statusTab]);
 
   function onRefresh() {

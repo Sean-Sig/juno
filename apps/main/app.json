@@ -12,6 +12,7 @@
     },
     "android": {
       "package": "com.juno.app",
+      "versionCode": 1,
       "adaptiveIcon": {
         "foregroundImage": "./assets/adaptive-icon.png",
         "backgroundColor": "#006747"

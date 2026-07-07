@@ -13,8 +13,18 @@ import {
 import { SafeAreaView } from "react-native-safe-area-context";
 import { Image } from "expo-image";
 import { useRouter } from "expo-router";
-import { soccer, type SoccerTeam, type SoccerPlayer } from "@juno/api";
-import { PlayerCard, SkeletonCard, countryFlag, useTheme, spacing, typography, radius, type Palette } from "@juno/ui";
+import { soccer, type SoccerTeam, type SoccerPlayer, type SoccerGame } from "@juno/api";
+import {
+  PlayerCard,
+  SkeletonCard,
+  LiveBadge,
+  countryFlag,
+  useTheme,
+  spacing,
+  typography,
+  radius,
+  type Palette,
+} from "@juno/ui";
 import { useFollowedPlayers } from "../context/FollowedPlayersContext";
 
 // ---------------------------------------------------------------------------
@@ -22,7 +32,9 @@ import { useFollowedPlayers } from "../context/FollowedPlayersContext";
 // ---------------------------------------------------------------------------
 
 type ViewMode = "teams" | "players";
-type Section = { title: string; data: SoccerTeam[] };
+type StandingsSection = { kind: "standings"; title: string; data: SoccerTeam[] };
+type RoundSection = { kind: "round"; title: string; data: SoccerGame[] };
+type Section = StandingsSection | RoundSection;
 
 const LEAGUE_LABELS: Record<string, string> = {
   EPL: "EPL",
@@ -42,7 +54,7 @@ const PER_PAGE = 50;
 // Teams view helpers
 // ---------------------------------------------------------------------------
 
-function groupByLeague(teams: SoccerTeam[]): Section[] {
+function groupByLeague(teams: SoccerTeam[]): StandingsSection[] {
   // Tournament leagues (e.g. World Cup) split teams into groups via `conference`
   // ("Group A", "Group B", ...) and rank standings within each group separately,
   // so groups must stay separate sections rather than one flat league-wide list.
@@ -64,6 +76,7 @@ function groupByLeague(teams: SoccerTeam[]): Section[] {
   return groups.map(({ league, conference, data }) => {
     const leagueLabel = LEAGUE_LABELS[league] ?? league;
     return {
+      kind: "standings" as const,
       title: conference ? `${leagueLabel} · ${conference}` : leagueLabel,
       data: data.sort((a, b) => {
         if (a.standing_rank != null && b.standing_rank != null) {
@@ -74,6 +87,81 @@ function groupByLeague(teams: SoccerTeam[]): Section[] {
       }),
     };
   });
+}
+
+// ---------------------------------------------------------------------------
+// Knockout rounds view helpers
+// ---------------------------------------------------------------------------
+
+// Once a competition is down to a knockout bracket, its group table is frozen
+// (knockout games never feed the standings computer) and stops reflecting
+// who's actually still alive. Swap that league's section(s) for a
+// rounds-grouped fixture list instead — grouped by whatever `round` the
+// provider sent, ordered by when the round actually kicked off, not by
+// guessing at round-name text ("Quarterfinal" vs "Quarter-final" etc. vary
+// by competition).
+function groupKnockoutByRound(games: SoccerGame[]): RoundSection[] {
+  const map = new Map<string, { league: string; round: string; data: SoccerGame[] }>();
+  for (const g of games) {
+    const league = g.league ?? "Other";
+    const round = g.round ?? "Knockout stage";
+    const key = `${league}::${round}`;
+    if (!map.has(key)) map.set(key, { league, round, data: [] });
+    map.get(key)!.data.push(g);
+  }
+
+  const earliestStart = (data: SoccerGame[]) =>
+    Math.min(...data.map((g) => (g.scheduled_at ? new Date(g.scheduled_at).getTime() : Infinity)));
+
+  const leagueOrder = Object.keys(LEAGUE_LABELS);
+  const groups = [...map.values()].sort((a, b) => {
+    const order = leagueOrder.indexOf(a.league) - leagueOrder.indexOf(b.league);
+    if (order !== 0) return order;
+    return earliestStart(a.data) - earliestStart(b.data);
+  });
+
+  return groups.map(({ league, round, data }) => {
+    const leagueLabel = LEAGUE_LABELS[league] ?? league;
+    return {
+      kind: "round" as const,
+      title: `${leagueLabel} · ${formatRoundLabel(round)}`,
+      data: data.sort((a, b) => {
+        const aTime = a.scheduled_at ? new Date(a.scheduled_at).getTime() : Infinity;
+        const bTime = b.scheduled_at ? new Date(b.scheduled_at).getTime() : Infinity;
+        return aTime - bTime;
+      }),
+    };
+  });
+}
+
+// Enet's `Round` property mixes two formats: a fraction string for earlier
+// knockout rounds ("1/16" = 16 matches = round of 32, "1/8" = 8 matches =
+// round of 16 — the denominator is match count, not team count or "1/Nth of
+// the final") and plain English for the later ones ("Quarter Finals").
+// Confirmed against real World Cup data before writing this — "1/16" reads
+// like "round of 16" at a glance but is actually round of 32.
+function formatRoundLabel(round: string): string {
+  const fraction = round.match(/^1\/(\d+)$/);
+  if (fraction) {
+    const teams = parseInt(fraction[1], 10) * 2;
+    if (teams === 4) return "Semifinals";
+    if (teams === 8) return "Quarterfinals";
+    return `Round of ${teams}`;
+  }
+
+  const normalized = round.trim().toLowerCase().replace(/[\s-]+/g, " ");
+  if (normalized === "quarter finals" || normalized === "quarterfinals") return "Quarterfinals";
+  if (normalized === "semi finals" || normalized === "semifinals") return "Semifinals";
+  if (normalized === "final") return "Final";
+  return round;
+}
+
+function formatKickoff(scheduledAt: string | null): string {
+  if (!scheduledAt) return "TBD";
+  const d = new Date(scheduledAt);
+  const date = d.toLocaleDateString([], { month: "short", day: "numeric" });
+  const time = d.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
+  return `${date}, ${time}`;
 }
 
 function TeamRow({ team, rank }: { team: SoccerTeam; rank: number }) {
@@ -122,6 +210,110 @@ function TableHeader() {
   );
 }
 
+function TeamSideRow({
+  name,
+  logo,
+  score,
+  penScore,
+  won,
+  faded,
+  styles,
+}: {
+  name: string;
+  logo: string | null | undefined;
+  score: number | null;
+  penScore: number | null;
+  won: boolean;
+  faded: boolean;
+  styles: ReturnType<typeof createStyles>;
+}) {
+  return (
+    <View style={styles.matchTeamRow}>
+      <View style={styles.nameRow}>
+        {logo ? (
+          <Image source={{ uri: logo }} style={styles.teamLogo} cachePolicy="memory-disk" contentFit="contain" />
+        ) : (
+          (() => {
+            const flag = countryFlag(name);
+            return flag ? <Text style={styles.teamFlag}>{flag}</Text> : null;
+          })()
+        )}
+        <Text style={[styles.matchTeamName, faded && styles.matchTeamNameFaded]} numberOfLines={1}>
+          {name}
+        </Text>
+        {won && <Text style={styles.winnerMark}>✓</Text>}
+      </View>
+      {score != null && (
+        <Text style={styles.matchScore}>
+          {score}
+          {penScore != null && <Text style={styles.matchScorePen}> ({penScore})</Text>}
+        </Text>
+      )}
+    </View>
+  );
+}
+
+function MatchRow({ game }: { game: SoccerGame }) {
+  const { colors } = useTheme();
+  const styles = useMemo(() => createStyles(colors), [colors]);
+
+  const isLive = game.status === "live";
+  const isFinished = game.status === "finished";
+
+  // Final score includes extra-time goals when played (mirrors games.tsx —
+  // a match decided 1-0 in extra time after a 2-2 draw is 3-2, not a tie).
+  const finalHomeScore =
+    isFinished && game.home_score != null ? game.home_score + (game.home_score_et ?? 0) : game.home_score;
+  const finalAwayScore =
+    isFinished && game.away_score != null ? game.away_score + (game.away_score_et ?? 0) : game.away_score;
+
+  // A penalty shootout is only played after regulation/ET ends level, so the
+  // final score is tied by definition — read the real winner off the penalty
+  // score instead.
+  const decidedByPens =
+    isFinished && game.penalty_shootout === true && game.home_score_pen != null && game.away_score_pen != null;
+  const homePenScore = decidedByPens ? game.home_score_pen : null;
+  const awayPenScore = decidedByPens ? game.away_score_pen : null;
+
+  const homeWon = decidedByPens
+    ? homePenScore! > awayPenScore!
+    : isFinished && (finalHomeScore ?? 0) > (finalAwayScore ?? 0);
+  const awayWon = decidedByPens
+    ? awayPenScore! > homePenScore!
+    : isFinished && (finalAwayScore ?? 0) > (finalHomeScore ?? 0);
+
+  const showScore = isFinished || isLive;
+
+  return (
+    <View style={styles.matchCard}>
+      {isLive && (
+        <View style={styles.matchStatusRow}>
+          <LiveBadge />
+        </View>
+      )}
+      <TeamSideRow
+        name={game.home_team?.name ?? "TBD"}
+        logo={game.home_team?.logo}
+        score={showScore ? finalHomeScore : null}
+        penScore={homePenScore ?? null}
+        won={homeWon}
+        faded={isFinished && !homeWon}
+        styles={styles}
+      />
+      <TeamSideRow
+        name={game.away_team?.name ?? "TBD"}
+        logo={game.away_team?.logo}
+        score={showScore ? finalAwayScore : null}
+        penScore={awayPenScore ?? null}
+        won={awayWon}
+        faded={isFinished && !awayWon}
+        styles={styles}
+      />
+      {!isLive && !isFinished && <Text style={styles.matchKickoff}>{formatKickoff(game.scheduled_at)}</Text>}
+    </View>
+  );
+}
+
 // ---------------------------------------------------------------------------
 // Teams view
 // ---------------------------------------------------------------------------
@@ -133,8 +325,19 @@ function TeamsView({ colors }: { colors: Palette }) {
   const [refreshing, setRefreshing] = useState(false);
 
   const load = useCallback(async () => {
-    const { data } = await soccer.getTeams({ per_page: 100 });
-    setSections(groupByLeague(data));
+    const [{ data: teams }, { data: knockoutGames }] = await Promise.all([
+      soccer.getTeams({ per_page: 100 }),
+      soccer.getGames({ season_type: "knockout" }),
+    ]);
+
+    // Leagues currently in a knockout bracket get a rounds view instead of a
+    // group table — their group standings are frozen and no longer useful
+    // (see groupKnockoutByRound).
+    const knockoutLeagues = new Set(knockoutGames.map((g) => g.league).filter((l): l is string => !!l));
+    const standingsSections = groupByLeague(teams.filter((t) => !t.league || !knockoutLeagues.has(t.league)));
+    const roundSections = groupKnockoutByRound(knockoutGames);
+
+    setSections([...roundSections, ...standingsSections]);
   }, []);
 
   useEffect(() => {
@@ -159,9 +362,9 @@ function TeamsView({ colors }: { colors: Palette }) {
           <Text style={styles.emptyText}>Standings will appear once the season is underway.</Text>
         </View>
       ) : (
-        <SectionList
+        <SectionList<SoccerTeam | SoccerGame, Section>
           sections={sections}
-          keyExtractor={(t) => t.id}
+          keyExtractor={(item) => item.id}
           contentContainerStyle={styles.listContent}
           refreshControl={
             <RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor={colors.primary} />
@@ -172,10 +375,16 @@ function TeamsView({ colors }: { colors: Palette }) {
               <View style={styles.sectionHeader}>
                 <Text style={styles.sectionTitle}>{section.title}</Text>
               </View>
-              <TableHeader />
+              {section.kind === "standings" && <TableHeader />}
             </View>
           )}
-          renderItem={({ item, index }) => <TeamRow team={item} rank={index + 1} />}
+          renderItem={({ item, index, section }) =>
+            section.kind === "round" ? (
+              <MatchRow game={item as SoccerGame} />
+            ) : (
+              <TeamRow team={item as SoccerTeam} rank={index + 1} />
+            )
+          }
         />
       )}
     </View>
@@ -412,6 +621,28 @@ function createStyles(colors: Palette) {
     wdl: { ...typography.label, color: colors.text, width: 60, textAlign: "center" },
     pts: { ...typography.label, color: colors.primary, width: 36, textAlign: "center", fontWeight: "700" },
     split: { ...typography.caption, color: colors.textSecondary, width: 44, textAlign: "center" },
+
+    // Knockout rounds view
+    matchCard: {
+      backgroundColor: colors.background,
+      paddingVertical: spacing.sm,
+      paddingHorizontal: spacing.md,
+      borderBottomWidth: StyleSheet.hairlineWidth,
+      borderBottomColor: colors.border,
+    },
+    matchStatusRow: { marginBottom: spacing.xs },
+    matchTeamRow: {
+      flexDirection: "row",
+      alignItems: "center",
+      justifyContent: "space-between",
+      paddingVertical: 3,
+    },
+    matchTeamName: { ...typography.label, color: colors.text, fontWeight: "600", flexShrink: 1 },
+    matchTeamNameFaded: { color: colors.textSecondary, fontWeight: "400" },
+    winnerMark: { ...typography.caption, color: colors.primary, marginLeft: spacing.xs, fontWeight: "700" },
+    matchScore: { ...typography.label, color: colors.text, fontWeight: "700" },
+    matchScorePen: { ...typography.caption, color: colors.textSecondary, fontWeight: "400" },
+    matchKickoff: { ...typography.caption, color: colors.textSecondary, marginTop: spacing.xs },
 
     // Players view
     searchBar: { padding: spacing.md, paddingBottom: spacing.sm },

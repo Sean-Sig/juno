@@ -1,5 +1,6 @@
 import React, { createContext, useContext, useEffect, useState } from "react";
 import { auth } from "./api";
+import { fan } from "../fan/api";
 import { saveSession, loadSession, clearSession } from "./storage";
 import { setUnauthorizedHandler } from "../client";
 import type { AuthSession } from "./types";
@@ -10,6 +11,8 @@ type AuthContextValue = {
   login: (email: string, password: string, accountId: string) => Promise<AuthSession>;
   register: (email: string, password: string, accountId: string) => Promise<AuthSession>;
   logout: () => Promise<void>;
+  deleteAccount: () => Promise<void>;
+  updateDisplayName: (displayName: string) => Promise<void>;
 };
 
 const AuthContext = createContext<AuthContextValue | null>(null);
@@ -68,8 +71,26 @@ export function AuthProvider({
     setSession(null);
   }
 
+  async function deleteAccount(): Promise<void> {
+    if (session) {
+      await fan.deleteAccount(session.token);
+    }
+    await clearSession(sessionKey);
+    setSession(null);
+  }
+
+  async function updateDisplayName(displayName: string): Promise<void> {
+    if (!session) return;
+    const { data } = await fan.updateDisplayName(session.token, displayName);
+    const updated = { ...session, display_name: data.display_name };
+    await saveSession(updated, sessionKey);
+    setSession(updated);
+  }
+
   return (
-    <AuthContext.Provider value={{ session, isLoading, login, register, logout }}>
+    <AuthContext.Provider
+      value={{ session, isLoading, login, register, logout, deleteAccount, updateDisplayName }}
+    >
       {children}
     </AuthContext.Provider>
   );

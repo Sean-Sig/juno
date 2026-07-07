@@ -10,7 +10,7 @@ import {
   StyleSheet,
   Animated,
 } from "react-native";
-import { useSport, ALL_SPORTS, type Sport } from "@juno/api";
+import { useSport, ALL_SPORTS, isSportEnabled, type Sport } from "@juno/api";
 import { useTheme, spacing, radius, typography, type Palette } from "@juno/ui";
 import { ScoutCreditsProvider, useScoutCredits } from "../../context/ScoutCreditsContext";
 import { ScoutLineupProvider } from "../../context/ScoutLineupContext";
@@ -86,7 +86,9 @@ const meta = SPORT_META[activeSport];
             <View style={styles.sheetHandle} />
             <Text style={styles.sheetTitle}>Switch sport</Text>
 
-            {followedSports.map((sport) => {
+            {/* Only sports with a full tab experience are switchable — a
+                followed "coming soon" sport (e.g. golf) stays Home-suggestions-only. */}
+            {followedSports.filter(isSportEnabled).map((sport) => {
               const sm = SPORT_META[sport];
               const isActive = sport === activeSport;
               return (
@@ -118,6 +120,40 @@ const meta = SPORT_META[activeSport];
         </Animated.View>
       </Modal>
     </>
+  );
+}
+
+// ---------------------------------------------------------------------------
+// Profile button (top-right of Home only — Profile isn't a bottom tab)
+// ---------------------------------------------------------------------------
+function ProfileHeaderButton() {
+  const { colors } = useTheme();
+  const router = useRouter();
+
+  return (
+    <TouchableOpacity
+      onPress={() => router.push("/(app)/profile")}
+      hitSlop={8}
+      style={{ marginRight: spacing.md }}
+    >
+      <Ionicons name="person-circle-outline" size={26} color={colors.text} />
+    </TouchableOpacity>
+  );
+}
+
+// ---------------------------------------------------------------------------
+// Back button for screens pushed on top of a tab (e.g. Profile) — the Tabs
+// navigator's shared headerLeft is the sport switcher, which would otherwise
+// replace the back arrow and leave no way to return.
+// ---------------------------------------------------------------------------
+function BackButton() {
+  const { colors } = useTheme();
+  const router = useRouter();
+
+  return (
+    <TouchableOpacity onPress={() => router.back()} hitSlop={8} style={{ paddingHorizontal: spacing.sm }}>
+      <Ionicons name="chevron-back" size={26} color={colors.text} />
+    </TouchableOpacity>
   );
 }
 
@@ -197,6 +233,7 @@ export default function AppLayout() {
         options={{
           title: "Home",
           tabBarIcon: ({ color, size }) => <Ionicons name="home-outline" color={color} size={size} />,
+          headerRight: () => <ProfileHeaderButton />,
         }}
       />
 
@@ -249,12 +286,11 @@ export default function AppLayout() {
         }}
       />
 
-      {/* Tab 2 — Scout (hidden until launch) */}
+      {/* Tab 2 — Scout */}
       <Tabs.Screen
         name="scout"
         options={{
           title: "Scout",
-          href: null,
           tabBarIcon: ({ color, size }) => <Ionicons name="sparkles" color={color} size={size} />,
         }}
       />
@@ -268,12 +304,13 @@ export default function AppLayout() {
         }}
       />
 
-      {/* Tab 4 — Profile */}
+      {/* Profile — reachable via the header button on Home, not a bottom tab */}
       <Tabs.Screen
         name="profile"
         options={{
           title: "Profile",
-          tabBarIcon: ({ color, size }) => <Ionicons name="person-circle-outline" color={color} size={size} />,
+          href: null,
+          headerLeft: () => <BackButton />,
         }}
       />
       <Tabs.Screen name="player/[id]" options={{ href: null, title: "Player" }} />

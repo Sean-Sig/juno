@@ -18,6 +18,8 @@ SplashScreen.preventAutoHideAsync();
  *  2. Logged in but no sports picked → /onboarding
  *  3. Ready → /(app)/ (the tab layout)
  */
+type NotificationData = { sport?: string; match_id?: string; player_id?: string; game_id?: string };
+
 function RootNavigator() {
   const { session, isLoading: authLoading } = useAuth();
   const { isOnboarded, isLoading: sportLoading } = useSport();
@@ -25,6 +27,7 @@ function RootNavigator() {
   const segments = useSegments();
   const router = useRouter();
   const didLandOnHome = useRef(false);
+  const handledColdStartNotification = useRef(false);
 
   useEffect(() => {
     if (authLoading || sportLoading) return;
@@ -54,6 +57,42 @@ function RootNavigator() {
       router.replace("/(app)/home");
     }
   }, [authLoading, sportLoading, session, isOnboarded, segments]);
+
+  // Route to the relevant screen for a tapped notification's payload
+  // (see Dropshot.Notifications on the backend for the shapes sent).
+  function openNotification(data: NotificationData) {
+    if (data.sport === "tennis" && data.match_id) {
+      router.push(`/match/${data.match_id}`);
+    } else if (data.sport === "golf" && data.player_id) {
+      router.push({ pathname: `/(app)/player/${data.player_id}`, params: { sport: "golf" } });
+    } else if (data.sport === "soccer" && data.game_id) {
+      router.push({ pathname: `/(app)/game/${data.game_id}`, params: { sport: "soccer" } });
+    }
+  }
+
+  // Notification tapped while the app was already running (foreground or backgrounded).
+  useEffect(() => {
+    const subscription = Notifications.addNotificationResponseReceivedListener((response) => {
+      if (!session || !isOnboarded) return;
+      openNotification(response.notification.request.content.data as NotificationData);
+    });
+    return () => subscription.remove();
+  }, [session, isOnboarded]);
+
+  // App launched by tapping a notification (was fully killed) — only checked
+  // once auth/onboarding settle, and only once per app session, so it lands
+  // on top of the initial home redirect above rather than racing it.
+  useEffect(() => {
+    if (authLoading || sportLoading || !session || !isOnboarded) return;
+    if (handledColdStartNotification.current) return;
+    handledColdStartNotification.current = true;
+
+    Notifications.getLastNotificationResponseAsync()
+      .then((response) => {
+        if (response) openNotification(response.notification.request.content.data as NotificationData);
+      })
+      .catch(() => {});
+  }, [authLoading, sportLoading, session, isOnboarded]);
 
   // Register Expo push token once per session. Silently skips in Expo Go
   // (no projectId) and when permission is denied — never blocks the app.

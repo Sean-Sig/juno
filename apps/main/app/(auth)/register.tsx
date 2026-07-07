@@ -8,12 +8,14 @@ import {
   StyleSheet,
   KeyboardAvoidingView,
   Platform,
+  Linking,
 } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { useRouter } from "expo-router";
 import { Ionicons } from "@expo/vector-icons";
 import { useAuth } from "@juno/api";
 import { useTheme, spacing, typography, radius, type Palette } from "@juno/ui";
+import { TERMS_URL, PRIVACY_URL } from "../../constants/legal";
 
 const ACCOUNT_ID = process.env.EXPO_PUBLIC_ACCOUNT_ID ?? "00000000-0000-0000-0000-000000000003";
 
@@ -132,6 +134,18 @@ export default function RegisterScreen() {
           )}
         </TouchableOpacity>
 
+        <Text style={styles.consent}>
+          By creating an account, you agree to our{" "}
+          <Text style={styles.consentLink} onPress={() => Linking.openURL(TERMS_URL)}>
+            Terms & Conditions
+          </Text>{" "}
+          and{" "}
+          <Text style={styles.consentLink} onPress={() => Linking.openURL(PRIVACY_URL)}>
+            Privacy Policy
+          </Text>
+          .
+        </Text>
+
         <TouchableOpacity onPress={() => router.push("/(auth)/login")}>
           <Text style={styles.link}>Already have an account? Sign in</Text>
         </TouchableOpacity>
@@ -183,5 +197,12 @@ function createStyles(colors: Palette) {
   buttonDisabled: { opacity: 0.6 },
   buttonText: { ...typography.body, color: colors.card, fontWeight: "700" },
   link: { ...typography.body, color: colors.primary, textAlign: "center" },
+  consent: {
+    ...typography.caption,
+    color: colors.textSecondary,
+    textAlign: "center",
+    marginBottom: spacing.md,
+  },
+  consentLink: { color: colors.primary, fontWeight: "600" },
 });
 }

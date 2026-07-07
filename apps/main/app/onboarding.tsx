@@ -11,7 +11,7 @@ import {
 import { SafeAreaView } from "react-native-safe-area-context";
 import { useRouter } from "expo-router";
 import { Ionicons } from "@expo/vector-icons";
-import { useAuth, useSport, ALL_SPORTS, type Sport } from "@juno/api";
+import { useAuth, useSport, ALL_SPORTS, isSportComingSoon, isSportEnabled, type Sport } from "@juno/api";
 import { useTheme, spacing, radius, typography, type Palette } from "@juno/ui";
 
 const SPORT_META: Record<Sport, { label: string; emoji: string; description: string }> = {
@@ -67,8 +67,10 @@ export default function OnboardingScreen() {
         if (defaultSport === sport) setDefaultSport(null);
       } else {
         next.add(sport);
-        // Auto-set default if none chosen yet
-        if (!defaultSport) setDefaultSport(sport);
+        // Auto-set default if none chosen yet — only for sports with a full
+        // tab experience; a "coming soon" sport (e.g. golf) is followable for
+        // Home suggestions but should never become the default/active sport.
+        if (!defaultSport && isSportEnabled(sport)) setDefaultSport(sport);
       }
       return next;
     });
@@ -80,7 +82,9 @@ export default function OnboardingScreen() {
       return;
     }
     const followed = Array.from(selected);
-    const def = defaultSport ?? followed[0];
+    // Prefer an enabled sport as the default even if none was explicitly
+    // chosen (e.g. only a "coming soon" sport like golf was selected).
+    const def = defaultSport ?? followed.find(isSportEnabled) ?? followed[0];
 
     setSaving(true);
     try {
@@ -103,6 +107,7 @@ export default function OnboardingScreen() {
           {ALL_SPORTS.map((sport) => {
             const meta = SPORT_META[sport];
             const isSelected = selected.has(sport);
+            const comingSoon = isSportComingSoon(sport);
             return (
               <TouchableOpacity
                 key={sport}
@@ -112,10 +117,19 @@ export default function OnboardingScreen() {
               >
                 <Text style={styles.sportEmoji}>{meta.emoji}</Text>
                 <View style={styles.sportInfo}>
-                  <Text style={[styles.sportLabel, isSelected && styles.sportLabelSelected]}>
-                    {meta.label}
+                  <View style={styles.sportLabelRow}>
+                    <Text style={[styles.sportLabel, isSelected && styles.sportLabelSelected]}>
+                      {meta.label}
+                    </Text>
+                    {comingSoon && (
+                      <View style={styles.comingSoonBadge}>
+                        <Text style={styles.comingSoonText}>Coming Soon</Text>
+                      </View>
+                    )}
+                  </View>
+                  <Text style={styles.sportDesc}>
+                    {comingSoon ? `${meta.description} — follow now to get player suggestions early` : meta.description}
                   </Text>
-                  <Text style={styles.sportDesc}>{meta.description}</Text>
                 </View>
                 <View style={[styles.checkbox, isSelected && styles.checkboxSelected]}>
                   {isSelected && <Ionicons name="checkmark" size={14} color="#fff" />}
@@ -125,12 +139,12 @@ export default function OnboardingScreen() {
           })}
         </View>
 
-        {selected.size > 1 && (
+        {Array.from(selected).filter(isSportEnabled).length > 1 && (
           <View style={styles.defaultSection}>
             <Text style={styles.defaultLabel}>Default sport</Text>
             <Text style={styles.defaultHint}>Opens first when you launch the app</Text>
             <View style={styles.defaultRow}>
-              {Array.from(selected).map((sport) => {
+              {Array.from(selected).filter(isSportEnabled).map((sport) => {
                 const meta = SPORT_META[sport];
                 const isDefault = defaultSport === sport;
                 return (
@@ -197,9 +211,17 @@ function createStyles(colors: Palette) {
     sportCardSelected: { borderColor: colors.primary },
     sportEmoji: { fontSize: 32 },
     sportInfo: { flex: 1 },
+    sportLabelRow: { flexDirection: "row", alignItems: "center", gap: spacing.xs },
     sportLabel: { ...typography.h3, color: colors.text },
     sportLabelSelected: { color: colors.primary },
     sportDesc: { ...typography.caption, color: colors.textSecondary, marginTop: 2 },
+    comingSoonBadge: {
+      backgroundColor: colors.border,
+      borderRadius: radius.full,
+      paddingVertical: 4,
+      paddingHorizontal: spacing.sm,
+    },
+    comingSoonText: { ...typography.caption, color: colors.textSecondary, fontWeight: "600" },
     checkbox: {
       width: 22,
       height: 22,

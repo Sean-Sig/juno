@@ -7,11 +7,16 @@ import {
   StyleSheet,
   TouchableOpacity,
   Switch,
+  Linking,
+  Alert,
+  TextInput,
 } from "react-native";
+import { Ionicons } from "@expo/vector-icons";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { useRouter } from "expo-router";
 import { useAuth, useSport, type Sport } from "@juno/api";
 import { useTheme, spacing, typography, radius, type Palette, type ThemePreference } from "@juno/ui";
+import { TERMS_URL, PRIVACY_URL, SUPPORT_EMAIL } from "../../constants/legal";
 
 const SPORT_META: Record<Sport, { emoji: string; label: string }> = {
   golf: { emoji: "⛳", label: "Golf" },
@@ -25,9 +30,70 @@ const SPORT_META: Record<Sport, { emoji: string; label: string }> = {
 export default function ProfileScreen() {
   const { colors, preference, setPreference } = useTheme();
   const styles = useMemo(() => createStyles(colors), [colors]);
-  const { session, logout } = useAuth();
-  const { followedSports, defaultSport } = useSport();
+  const { session, logout, deleteAccount, updateDisplayName } = useAuth();
+  const { followedSports, defaultSport, resetPrefs } = useSport();
   const router = useRouter();
+  const [deleting, setDeleting] = useState(false);
+  const [editingName, setEditingName] = useState(false);
+  const [nameDraft, setNameDraft] = useState("");
+  const [savingName, setSavingName] = useState(false);
+
+  const displayName = session?.display_name || `Fan #${session?.fan_id.slice(0, 8)}`;
+
+  function startEditingName() {
+    setNameDraft(session?.display_name ?? "");
+    setEditingName(true);
+  }
+
+  async function saveName() {
+    const trimmed = nameDraft.trim();
+    if (!trimmed || trimmed === session?.display_name) {
+      setEditingName(false);
+      return;
+    }
+    setSavingName(true);
+    try {
+      await updateDisplayName(trimmed);
+      setEditingName(false);
+    } catch {
+      Alert.alert("Something went wrong", "Please try again.");
+    } finally {
+      setSavingName(false);
+    }
+  }
+
+  function contactUs() {
+    const subject = encodeURIComponent("Juno Support");
+    const body = encodeURIComponent(
+      `\n\n---\nFan ID: ${session?.fan_id ?? "unknown"}`
+    );
+    Linking.openURL(`mailto:${SUPPORT_EMAIL}?subject=${subject}&body=${body}`);
+  }
+
+  function confirmDeleteAccount() {
+    Alert.alert(
+      "Delete Account",
+      "This permanently deletes your account and all your data. This can't be undone.",
+      [
+        { text: "Cancel", style: "cancel" },
+        {
+          text: "Delete",
+          style: "destructive",
+          onPress: async () => {
+            setDeleting(true);
+            try {
+              await deleteAccount();
+              await resetPrefs();
+            } catch {
+              Alert.alert("Something went wrong", "Please try again.");
+            } finally {
+              setDeleting(false);
+            }
+          },
+        },
+      ]
+    );
+  }
 
   function cycleAppearance() {
     const order: ThemePreference[] = ["system", "light", "dark"];
@@ -59,10 +125,40 @@ export default function ProfileScreen() {
               <View style={styles.account}>
                 <View style={styles.avatar}>
                   <Text style={styles.avatarInitials}>
-                    {session.fan_id[0]?.toUpperCase()}
+                    {displayName[0]?.toUpperCase()}
                   </Text>
                 </View>
-                <Text style={styles.accountId}>Fan #{session.fan_id.slice(0, 8)}</Text>
+                {editingName ? (
+                  <View style={styles.nameEditRow}>
+                    <TextInput
+                      style={[styles.nameInput, { color: colors.text, borderColor: colors.border }]}
+                      value={nameDraft}
+                      onChangeText={setNameDraft}
+                      autoFocus
+                      maxLength={40}
+                      returnKeyType="done"
+                      onSubmitEditing={saveName}
+                      editable={!savingName}
+                    />
+                    {savingName ? (
+                      <ActivityIndicator color={colors.primary} />
+                    ) : (
+                      <>
+                        <TouchableOpacity onPress={saveName} hitSlop={8}>
+                          <Ionicons name="checkmark" size={22} color={colors.primary} />
+                        </TouchableOpacity>
+                        <TouchableOpacity onPress={() => setEditingName(false)} hitSlop={8}>
+                          <Ionicons name="close" size={22} color={colors.textSecondary} />
+                        </TouchableOpacity>
+                      </>
+                    )}
+                  </View>
+                ) : (
+                  <TouchableOpacity style={styles.nameRow} onPress={startEditingName} hitSlop={8}>
+                    <Text style={styles.accountId}>{displayName}</Text>
+                    <Ionicons name="pencil" size={14} color={colors.textSecondary} />
+                  </TouchableOpacity>
+                )}
               </View>
 
               {/* Sports */}
@@ -108,9 +204,37 @@ export default function ProfileScreen() {
                 />
               </View>
 
+              {/* Support */}
+              <Text style={[styles.sectionTitle, { marginTop: spacing.lg }]}>Support</Text>
+              <TouchableOpacity style={styles.row} onPress={contactUs}>
+                <Text style={styles.rowLabel}>Contact Us</Text>
+              </TouchableOpacity>
+
+              {/* Legal */}
+              <Text style={[styles.sectionTitle, { marginTop: spacing.lg }]}>Legal</Text>
+              <TouchableOpacity style={styles.row} onPress={() => Linking.openURL(TERMS_URL)}>
+                <Text style={styles.rowLabel}>Terms & Conditions</Text>
+              </TouchableOpacity>
+              <TouchableOpacity style={styles.row} onPress={() => Linking.openURL(PRIVACY_URL)}>
+                <Text style={styles.rowLabel}>Privacy Policy</Text>
+              </TouchableOpacity>
+
               {/* Logout */}
               <TouchableOpacity style={styles.logoutButton} onPress={logout}>
                 <Text style={styles.logoutText}>Log Out</Text>
+              </TouchableOpacity>
+
+              {/* Delete account */}
+              <TouchableOpacity
+                style={styles.deleteButton}
+                onPress={confirmDeleteAccount}
+                disabled={deleting}
+              >
+                {deleting ? (
+                  <ActivityIndicator color={colors.error ?? "#ef4444"} />
+                ) : (
+                  <Text style={styles.deleteText}>Delete Account</Text>
+                )}
               </TouchableOpacity>
             </View>
           }
@@ -143,6 +267,15 @@ function createStyles(colors: Palette) {
     },
     avatarInitials: { ...typography.h2, color: colors.textOnPrimary, fontWeight: "700" },
     accountId: { ...typography.body, color: colors.textSecondary },
+    nameRow: { flexDirection: "row", alignItems: "center", gap: spacing.xs },
+    nameEditRow: { flexDirection: "row", alignItems: "center", gap: spacing.sm, marginTop: spacing.xs },
+    nameInput: {
+      ...typography.body,
+      borderBottomWidth: 1,
+      minWidth: 140,
+      textAlign: "center",
+      paddingVertical: 2,
+    },
     sectionTitle: { ...typography.h3, color: colors.text, marginBottom: spacing.sm },
     row: {
       flexDirection: "row",
@@ -180,5 +313,11 @@ function createStyles(colors: Palette) {
       alignItems: "center",
     },
     logoutText: { ...typography.label, color: colors.error ?? "#ef4444", fontWeight: "700" },
+    deleteButton: {
+      marginTop: spacing.sm,
+      alignItems: "center",
+      paddingVertical: spacing.sm,
+    },
+    deleteText: { ...typography.caption, color: colors.error ?? "#ef4444" },
   });
 }
