@@ -15,6 +15,7 @@ Backed by [Artemis](../artemis), a Phoenix umbrella API that ingests live tourna
 <p float="left">
   <img src="./screenshots/football-games.png" width="200" alt="Football upcoming games schedule" />
   <img src="./screenshots/soccer-games.png" width="200" alt="Soccer upcoming games schedule" />
+  <img src="./screenshots/soccer-match-detail.png" width="200" alt="Soccer World Cup match detail" />
   <img src="./screenshots/followed-sports.png" width="200" alt="Followed sports settings" />
 </p>
 
