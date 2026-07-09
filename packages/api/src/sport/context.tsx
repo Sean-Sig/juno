@@ -5,18 +5,15 @@ import { useAuth } from "../auth/context";
 
 export type Sport = "golf" | "tennis" | "basketball" | "hockey" | "football" | "soccer";
 
-// Only tennis is enabled for now — add a sport here once it's ready to
-// re-enable in onboarding/sport-settings.
-const ENABLED_SPORTS: Sport[] = ["tennis"];
+// All six sports have a full tab experience now.
+const ENABLED_SPORTS: Sport[] = ["tennis", "golf", "basketball", "hockey", "football", "soccer"];
 
 // Followable in onboarding/sport-settings (shown with a "Coming Soon" badge)
 // so Home can surface player/team suggestions for it, but it can't become
-// activeSport/defaultSport — see isSportEnabled. Move a sport to
-// ENABLED_SPORTS above when its full tab experience ships.
-const COMING_SOON_SPORTS: Sport[] = ["golf", "basketball", "football"];
+// activeSport/defaultSport — see isSportEnabled. Move a sport here instead of
+// ENABLED_SPORTS if its tab experience isn't ready yet.
+const COMING_SOON_SPORTS: Sport[] = [];
 
-// hockey/soccer are absent from both lists above, so they stay fully hidden
-// until they're added to one of them.
 export const ALL_SPORTS: Sport[] = [...ENABLED_SPORTS, ...COMING_SOON_SPORTS];
 
 export function isSportComingSoon(sport: Sport): boolean {

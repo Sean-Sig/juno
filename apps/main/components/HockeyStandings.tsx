@@ -131,7 +131,7 @@ function TeamsView({ colors }: { colors: Palette }) {
   const [refreshing, setRefreshing] = useState(false);
 
   const load = useCallback(async () => {
-    const { data } = await hockey.getTeams({ league: "NHL", per_page: "50" });
+    const { data } = await hockey.getTeams({ league: "NHL", per_page: 50 });
     setSections(groupByConference(data));
   }, []);
 

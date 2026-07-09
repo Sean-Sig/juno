@@ -1,25 +1,59 @@
-# Juno Mobile
+# Juno
 
-React Native monorepo for the Juno fan engagement apps. Built with Expo + Turborepo.
+A cross-sport fan engagement app built with React Native (Expo) and TypeScript. One app, six sports — live scores, player/team follows, rankings, and AI-powered match scouting, all switchable at runtime from a single codebase.
+
+Backed by [Artemis](../artemis), a Phoenix umbrella API that ingests live tournament/match data and pushes real-time updates over WebSockets.
+
+## Screenshots
+
+<p float="left">
+  <img src="./screenshots/golf-leaderboard.png" width="200" alt="Golf live tournament leaderboard" />
+  <img src="./screenshots/golf-player.png" width="200" alt="Golf player round scorecard" />
+  <img src="./screenshots/tennis-rankings.png" width="200" alt="Tennis ATP/WTA rankings" />
+  <img src="./screenshots/home-feed.png" width="200" alt="Home feed with cross-sport follow suggestions" />
+</p>
+<p float="left">
+  <img src="./screenshots/football-games.png" width="200" alt="Football upcoming games schedule" />
+  <img src="./screenshots/soccer-games.png" width="200" alt="Soccer upcoming games schedule" />
+  <img src="./screenshots/followed-sports.png" width="200" alt="Followed sports settings" />
+</p>
+
+## Features
+
+- **Live scores across 6 sports** — golf, tennis, basketball, hockey, football, and soccer, with real-time updates pushed over Phoenix WebSocket channels (no polling for live games/matches)
+- **Runtime sport switching** — one app, not six; switch your active sport from an in-app picker and the whole UI (tabs, theme, data) re-keys instantly
+- **Follow players & teams** — personalized feed of the players/teams you care about
+- **Rankings** — golf world rankings, tennis ATP/WTA rankings, and standings for the four team sports
+- **AI match scout** — Claude-powered analysis of head-to-head matchups and lineups, gated behind a lightweight credits system
+- **Push notifications** for followed players/teams via Expo Notifications
+
+## Tech Stack
+
+- **Expo** (React Native) with **Expo Router** for file-based navigation
+- **TypeScript** throughout
+- **Turborepo** monorepo (npm workspaces)
+- **Phoenix Channels** (`phoenix` npm package) for live WebSocket updates
+- **Expo SecureStore** for session persistence
 
 ## Structure
 
 ```
 juno/
 ├── apps/
-│   ├── golf/          # Golf fan app (leaderboard, players, schedule)
-│   └── tennis/        # Tennis fan app (scores, players, schedule, live match)
+│   └── main/     # The one and only app — all six sports live here
 ├── packages/
-│   ├── api/           # Shared REST + WebSocket client for the Juno backend
-│   ├── ui/            # Shared component library (PlayerCard, LiveBadge, theme)
-│   └── config/        # Shared TypeScript and ESLint config
+│   ├── api/      # @juno/api — REST + WebSocket clients, one module per sport
+│   ├── ui/       # @juno/ui — shared components (PlayerCard, LiveBadge) + theme tokens
+│   └── config/   # Shared tsconfig + eslint config
 ```
+
+Which sport is "active" is session state in React (`SportProvider`), not a routing or build-time concern — the tab bar adapts per sport rather than having a separate route tree for each one.
 
 ## Requirements
 
 - Node 18+
-- [Expo Go](https://expo.dev/go) on your phone, or iOS Simulator / Android Emulator
-- The Juno backend running at `http://localhost:4000` (see [juno/README.md](../juno/README.md))
+- [Expo Go](https://expo.dev/go) on your phone, or an iOS Simulator / Android Emulator
+- The [Artemis](../artemis) backend running locally at `http://localhost:4000`
 
 ## Setup
 
@@ -27,96 +61,39 @@ juno/
 # 1. Install dependencies (all workspaces)
 npm install
 
-# 2. Copy env file
-cp .env.example .env
-# Edit .env if your backend runs somewhere other than localhost:4000
+# 2. Copy the env file (Expo reads env per-app, not from the monorepo root)
+cp .env.example apps/main/.env
+# Edit apps/main/.env — use your machine's LAN IP instead of localhost
+# if you're testing on a physical device
 ```
 
 ## Running
 
 ```bash
-# Golf app
-npm run golf
+npm run start          # expo start, from the repo root
 
-# Tennis app
-npm run tennis
-```
-
-Or from within an app directory:
-
-```bash
-cd apps/tennis
+# or from within the app directory:
+cd apps/main
 npx expo start
+npm run ios            # --ios
+npm run android         # --android
 ```
 
-Scan the QR code with Expo Go, or press `i` for iOS simulator / `a` for Android.
+Scan the QR code with Expo Go, or press `i` for the iOS simulator / `a` for Android.
 
 ## Environment Variables
 
-All vars are prefixed `EXPO_PUBLIC_` so they're available in the RN bundle.
+Set in `apps/main/.env`, prefixed `EXPO_PUBLIC_` so they're bundled into the RN app:
 
 | Variable | Description | Default |
 |----------|-------------|---------|
 | `EXPO_PUBLIC_API_URL` | Juno REST base URL | `http://localhost:4000` |
 | `EXPO_PUBLIC_WS_URL` | Juno WebSocket URL | `ws://localhost:4000/socket` |
-| `EXPO_PUBLIC_GOLF_TEAM_ID` | Golf team ID | seed value |
-| `EXPO_PUBLIC_TENNIS_TEAM_ID` | Tennis team ID | seed value |
 
-## Packages
+## Other Commands
 
-### `@juno/api`
-
-Typed clients for every Juno endpoint plus Phoenix channel helpers.
-
-```ts
-import { golf, tennis, joinTennisMatchChannel } from "@juno/api";
-
-// REST
-const { data: players } = await tennis.searchPlayers("sinner");
-
-// WebSocket — live score updates
-const channel = joinTennisMatchChannel(matchId, {
-  onState: (match) => setMatch(match),
-  onDelta: (diff) => setMatch((prev) => ({ ...prev, ...diff })),
-  onComment: (c) => setComments((prev) => [c, ...prev]),
-});
+```bash
+npm run build       # expo export, all workspaces
+npm run lint        # eslint, all workspaces
+npm run typecheck   # tsc --noEmit, all workspaces
 ```
-
-### `@juno/ui`
-
-Shared components and design tokens.
-
-```ts
-import { PlayerCard, LiveBadge, colors, spacing } from "@juno/ui";
-```
-
-Components:
-- `PlayerCard` — photo, name, country, rank badge
-- `LiveBadge` — animated green "LIVE" pill
-
-Tokens: `colors`, `spacing`, `radius`, `typography`
-
-## App screens
-
-### Golf
-| Tab | Screen |
-|-----|--------|
-| Leaderboard | Live tournament scores, real-time via WebSocket |
-| Players | World rankings list |
-| Schedule | Tournament schedule entries |
-
-### Tennis
-| Tab | Screen |
-|-----|--------|
-| Scores | All tournament matches with set scores |
-| Players | Player list with search |
-| Schedule | Tournament schedule entries |
-| `/match/:id` | Live scoreboard + real-time commentary |
-
-## Adding a new sport
-
-1. Create `apps/<sport>/` with `package.json`, `app.json`, `tsconfig.json`
-2. Add sport API methods to `packages/api/src/<sport>/`
-3. Add sport types to `packages/api/src/<sport>/types.ts`
-4. Add a channel helper if the sport has real-time updates
-5. Export from `packages/api/src/index.ts`
